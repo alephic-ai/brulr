@@ -10,4 +10,5 @@ jobs:
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
+      - run: cargo test --verbose
       - run: cargo build --verbose
