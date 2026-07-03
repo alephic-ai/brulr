@@ -39,23 +39,31 @@ jobs:
         include:
           - os: ubuntu-latest
             target: x86_64-unknown-linux-gnu
+          - os: ubuntu-24.04-arm
+            target: aarch64-unknown-linux-gnu
           - os: macos-latest
             target: aarch64-apple-darwin
+          - os: macos-latest
+            target: x86_64-apple-darwin
           - os: windows-latest
             target: x86_64-pc-windows-msvc
+          - os: windows-latest
+            target: aarch64-pc-windows-msvc
     runs-on: ${{ matrix.os }}
     steps:
       - uses: actions/checkout@v7
       - name: Build and package
         shell: bash
         run: |
-          cargo build --release
+          rustup target add ${{ matrix.target }}
+          cargo build --release --target ${{ matrix.target }}
           mkdir dist
           name="brulr-${{ needs.check.outputs.tag }}-${{ matrix.target }}"
-          if [ -f target/release/brulr.exe ]; then
-            7z a "dist/$name.zip" ./target/release/brulr.exe
+          bin=target/${{ matrix.target }}/release/brulr
+          if [ -f "$bin.exe" ]; then
+            7z a "dist/$name.zip" "./$bin.exe"
           else
-            tar -czf "dist/$name.tar.gz" -C target/release brulr
+            tar -czf "dist/$name.tar.gz" -C "$(dirname "$bin")" brulr
           fi
       - uses: actions/upload-artifact@v7
         with:
