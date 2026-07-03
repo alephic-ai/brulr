@@ -11,6 +11,26 @@ pub trait Burner {
     fn run(&mut self, prompt: &str) -> Result<Usage, String>;
 }
 
+/// Spawn a harness command, turning a missing binary into a readable message,
+/// and return its stdout on success.
+fn run_harness(mut cmd: Command, name: &str) -> Result<Vec<u8>, String> {
+    let out = cmd.output().map_err(|e| match e.kind() {
+        std::io::ErrorKind::NotFound => format!(
+            "can't find the `{name}` harness. Install the {name} CLI and make \
+             sure it's on your PATH, or pick another with --harness."
+        ),
+        _ => format!("failed to run {name}: {e}"),
+    })?;
+    if !out.status.success() {
+        return Err(format!(
+            "{name} exited {}: {}",
+            out.status,
+            String::from_utf8_lossy(&out.stderr).trim()
+        ));
+    }
+    Ok(out.stdout)
+}
+
 /// The real backend: shells out to the `claude` CLI in one-shot mode.
 pub struct ClaudeBurner {
     pub model: Option<String>,
@@ -35,15 +55,7 @@ impl Burner for ClaudeBurner {
             cmd.args(["--effort", e]);
         }
         cmd.arg("--").arg(prompt); // `--` matters: --tools is variadic
-        let out = cmd.output().map_err(|e| format!("spawn claude: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "claude exited {}: {}",
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        parse_usage(&out.stdout)
+        parse_usage(&run_harness(cmd, "claude")?)
     }
 }
 
@@ -76,15 +88,7 @@ impl Burner for CodexBurner {
             cmd.args(["-c", &format!("model_reasoning_effort={e}")]);
         }
         cmd.arg(prompt);
-        let out = cmd.output().map_err(|e| format!("spawn codex: {e}"))?;
-        if !out.status.success() {
-            return Err(format!(
-                "codex exited {}: {}",
-                out.status,
-                String::from_utf8_lossy(&out.stderr).trim()
-            ));
-        }
-        let mut usage = parse_codex_usage(&out.stdout)?;
+        let mut usage = parse_codex_usage(&run_harness(cmd, "codex")?)?;
         usage.cost_usd = codex_cost(self.model.as_deref(), &usage);
         Ok(usage)
     }

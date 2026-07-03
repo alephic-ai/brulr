@@ -19,7 +19,7 @@ fn missing_claude_harness_errors() {
     let out = burn_with_missing_harness("claude");
     assert!(!out.status.success(), "expected non-zero exit");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("spawn claude"), "stderr was: {stderr}");
+    assert!(stderr.contains("can't find the `claude` harness"), "stderr was: {stderr}");
 }
 
 #[test]
@@ -27,5 +27,5 @@ fn missing_codex_harness_errors() {
     let out = burn_with_missing_harness("codex");
     assert!(!out.status.success(), "expected non-zero exit");
     let stderr = String::from_utf8_lossy(&out.stderr);
-    assert!(stderr.contains("spawn codex"), "stderr was: {stderr}");
+    assert!(stderr.contains("can't find the `codex` harness"), "stderr was: {stderr}");
 }
