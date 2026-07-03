@@ -1,9 +1,15 @@
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use brulr::{burn, calibrate, ClaudeBurner, Rng, PROBES};
+use brulr::{burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, PROBES};
 use chrono::{Local, Timelike};
-use clap::{Parser, Subcommand};
+use clap::{Parser, Subcommand, ValueEnum};
+
+#[derive(Clone, Copy, ValueEnum)]
+enum Harness {
+    Claude,
+    Codex,
+}
 
 #[derive(Parser)]
 #[command(name = "brülr", version, about = "A CLI for burning AI tokens on purpose.")]
@@ -22,7 +28,10 @@ enum Cmd {
         /// Burn until the next local wall-clock time HH:MM (overrides target).
         #[arg(long)]
         until: Option<String>,
-        /// Model to pass to claude (e.g. haiku, opus).
+        /// Agent harness CLI to burn against.
+        #[arg(long, value_enum, default_value_t = Harness::Claude)]
+        harness: Harness,
+        /// Model to pass to the harness (e.g. haiku/opus, or a codex model).
         #[arg(long)]
         model: Option<String>,
     },
@@ -80,7 +89,7 @@ fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Burn { target, until, model } => {
+        Cmd::Burn { target, until, harness, model } => {
             let parsed = match &until {
                 Some(hhmm) => parse_hhmm(hhmm).map(|target_sod| {
                     let now = Local::now();
@@ -97,7 +106,10 @@ fn main() {
                 }
             };
             let mut rng = Rng::from_entropy();
-            let mut burner = ClaudeBurner { model };
+            let mut burner: Box<dyn Burner> = match harness {
+                Harness::Claude => Box::new(ClaudeBurner { model }),
+                Harness::Codex => Box::new(CodexBurner { model }),
+            };
 
             eprint!("\r  calibrating… 0/{PROBES} probes");
             let _ = std::io::stderr().flush();
@@ -109,7 +121,7 @@ fn main() {
                 );
                 let _ = std::io::stderr().flush();
             };
-            let (cal, report) = match calibrate(&mut rng, &mut burner, &mut on_probe) {
+            let (cal, report) = match calibrate(&mut rng, burner.as_mut(), &mut on_probe) {
                 Ok(x) => x,
                 Err(e) => {
                     eprintln!("\nerror: {e}");
@@ -160,7 +172,7 @@ fn main() {
                 let _ = std::io::stderr().flush();
             };
             progress(&report); // paint current progress before the first (slow) burn call
-            match burn(target, deadline, &cal, report, &mut rng, &mut burner, &mut progress) {
+            match burn(target, deadline, &cal, report, &mut rng, burner.as_mut(), &mut progress) {
                 Ok(r) => {
                     eprintln!(); // finish the progress line
                     println!("calls:             {}", r.calls);

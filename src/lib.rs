@@ -231,6 +231,76 @@ impl Burner for ClaudeBurner {
     }
 }
 
+/// The `codex` backend: shells out to `codex exec` in non-interactive mode.
+pub struct CodexBurner {
+    pub model: Option<String>,
+}
+
+impl Burner for CodexBurner {
+    fn run(&mut self, prompt: &str) -> Result<Usage, String> {
+        let mut cmd = Command::new("codex");
+        // ponytail: these flags are version-sensitive (codex 0.142.x). `-c
+        // approval_policy=never` is the unattended shim; read-only sandbox
+        // keeps a burn prompt from touching the machine.
+        cmd.args([
+            "exec",
+            "--json",
+            "--skip-git-repo-check",
+            "--ephemeral",
+            "-s",
+            "read-only",
+            "-c",
+            "approval_policy=never",
+        ]);
+        if let Some(m) = &self.model {
+            cmd.args(["-m", m]);
+        }
+        cmd.arg(prompt);
+        let out = cmd.output().map_err(|e| format!("spawn codex: {e}"))?;
+        if !out.status.success() {
+            return Err(format!(
+                "codex exited {}: {}",
+                out.status,
+                String::from_utf8_lossy(&out.stderr).trim()
+            ));
+        }
+        parse_codex_usage(&out.stdout)
+    }
+}
+
+/// Sum token usage from codex's JSONL `turn.completed` events. codex reports
+/// `input_tokens` inclusive of `cached_input_tokens`, so fresh input is the
+/// difference; reasoning tokens count as output; there is no cache-creation.
+pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
+    let mut input = 0u64;
+    let mut cached = 0u64;
+    let mut output = 0u64;
+    let mut seen = false;
+    for line in stdout.split(|&b| b == b'\n') {
+        let Ok(v) = serde_json::from_slice::<serde_json::Value>(line) else {
+            continue;
+        };
+        if v["type"] != "turn.completed" {
+            continue;
+        }
+        seen = true;
+        let u = &v["usage"];
+        input += u["input_tokens"].as_u64().unwrap_or(0);
+        cached += u["cached_input_tokens"].as_u64().unwrap_or(0);
+        output += u["output_tokens"].as_u64().unwrap_or(0)
+            + u["reasoning_output_tokens"].as_u64().unwrap_or(0);
+    }
+    if !seen {
+        return Err("no turn.completed usage event in codex output".into());
+    }
+    Ok(Usage {
+        input_tokens: input.saturating_sub(cached),
+        cache_creation_input_tokens: 0,
+        output_tokens: output,
+        cache_read_input_tokens: cached,
+    })
+}
+
 /// Extract the `usage` block from claude's JSON result.
 pub fn parse_usage(stdout: &[u8]) -> Result<Usage, String> {
     let v: serde_json::Value =
@@ -285,6 +355,26 @@ mod tests {
         assert_eq!(u.cache_read_input_tokens, 40);
         // Cache-creation counts as burn; cache-read does not.
         assert_eq!(u.processed(), 25003);
+    }
+
+    #[test]
+    fn parse_codex_usage_maps_fields() {
+        // Real codex 0.142 shape; input_tokens is inclusive of cached.
+        let jsonl = concat!(
+            "{\"type\":\"item.completed\",\"item\":{\"text\":\"ok\"}}\n",
+            "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":14876,\"cached_input_tokens\":9600,\"output_tokens\":21,\"reasoning_output_tokens\":14}}\n",
+        );
+        let u = parse_codex_usage(jsonl.as_bytes()).unwrap();
+        assert_eq!(u.input_tokens, 14876 - 9600); // fresh input only
+        assert_eq!(u.cache_read_input_tokens, 9600);
+        assert_eq!(u.output_tokens, 21 + 14); // reasoning counts as output
+        assert_eq!(u.cache_creation_input_tokens, 0);
+        assert_eq!(u.processed(), 5276 + 35);
+    }
+
+    #[test]
+    fn parse_codex_usage_errs_without_event() {
+        assert!(parse_codex_usage(b"{\"type\":\"item.completed\"}\n").is_err());
     }
 
     #[test]
