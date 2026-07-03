@@ -1,0 +1,12 @@
+name: Markdown
+
+on: [push, pull_request]
+
+jobs:
+  rumdl:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rvben/rumdl@v0
+        with:
+          report-type: annotations

@@ -6,9 +6,9 @@
       backends are done. Still to add: raw Anthropic/Bedrock API (fleet
       load-generator) and claude streaming.
       - Claude streaming flags: `-p --verbose --output-format stream-json
-        --include-partial-messages --disallowedTools AskUserQuestion`.
-        Auto-inject and *normalize* existing values rather than blindly
-        appending.
+      --include-partial-messages --disallowedTools AskUserQuestion`.
+      Auto-inject and *normalize* existing values rather than blindly
+      appending.
 - [ ] **Burn-rate strategy.** `--strategy fastest-burn-rate` (tokens/sec) vs
       `cheapest-per-token`. (`--model` passthrough already exists.)
 
@@ -49,9 +49,9 @@
       free. Rate-limit auto-stop, Ctrl-C, and deadline all use the
       same mechanism.
 - [ ] **Cancel-flag hygiene** *(subtle bug worth guarding against)*.
-      Reset the CANCELLED flag before each task. Otherwise a SIGINT during task N
-      mislabels task N+1's ordinary failure as "cancelled" and drops the
-      error record.
+      Reset the CANCELLED flag before each task. Otherwise a SIGINT during
+      task N mislabels task N+1's ordinary failure as "cancelled" and drops
+      the error record.
 - [ ] **Sidecar lock for state.** `state.json` guarded by an fs2 exclusive
       lock on `.state.json.lock`, re-read after acquiring the lock. Parallel
       workers, one state file, no torn writes.
@@ -112,8 +112,8 @@
       `brulr bless <name>`, with a secular `brulr toast` variant.
 - [ ] **End-of-run report flourishes.** Calls, raw and cost-weighted tokens, and
       USD are reported (claude via `total_cost_usd`, codex via the `CODEX_PRICES`
-      table). Still missing: a duration line, "about N engineers (YC math)", and a
-      staleness warning on the hardcoded codex rates.
+      table). Still missing: a duration line, "about N engineers (YC math)",
+      and a staleness warning on the hardcoded codex rates.
 
 ## Leaderboard / metrics
 

@@ -1,4 +1,5 @@
 # brülr
+
 A CLI for burning AI tokens on purpose.
 
 brülr runs an agent harness (`claude` or `codex`) in a loop and pads every call
