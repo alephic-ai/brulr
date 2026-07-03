@@ -75,8 +75,23 @@ fn secs_until(now: u32, target: u32) -> u64 {
     }
 }
 
-/// Parse a burn target: plain integer = tokens, integer + s/m/h = duration.
-fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
+/// What a burn run aims for.
+#[derive(Debug, PartialEq)]
+enum Goal {
+    Tokens(u64),
+    Duration(Duration),
+    Dollars(f64),
+}
+
+/// Parse a burn target: plain integer = tokens, `N`+s/m/h = duration,
+/// `N`+`usd` = dollars.
+fn parse_target(s: &str) -> Result<Goal, String> {
+    if let Some(num) = s.strip_suffix("usd") {
+        let d: f64 = num
+            .parse()
+            .map_err(|_| format!("invalid dollar amount: {s} (use e.g. 5usd, 0.25usd)"))?;
+        return Ok(Goal::Dollars(d));
+    }
     let (num, unit) = s.split_at(s.len() - s.chars().last().map_or(0, |c| c.len_utf8()));
     let secs_per_unit = match unit {
         "s" => Some(1),
@@ -89,13 +104,13 @@ fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
             let n: u64 = num
                 .parse()
                 .map_err(|_| format!("invalid duration: {s} (use e.g. 90s, 45m, 2h)"))?;
-            Ok((u64::MAX, Some(Duration::from_secs(n * mult))))
+            Ok(Goal::Duration(Duration::from_secs(n * mult)))
         }
         None => {
-            let n: u64 = s
-                .parse()
-                .map_err(|_| format!("invalid target: {s} (tokens like 100000, or 90s/45m/2h)"))?;
-            Ok((n, None))
+            let n: u64 = s.parse().map_err(|_| {
+                format!("invalid target: {s} (tokens like 100000, 90s/45m/2h, or 5usd)")
+            })?;
+            Ok(Goal::Tokens(n))
         }
     }
 }
@@ -125,16 +140,21 @@ fn main() {
                 Some(hhmm) => parse_hhmm(hhmm).map(|target_sod| {
                     let now = Local::now();
                     let now_sod = now.hour() * 3600 + now.minute() * 60 + now.second();
-                    (u64::MAX, Some(Duration::from_secs(secs_until(now_sod, target_sod))))
+                    Goal::Duration(Duration::from_secs(secs_until(now_sod, target_sod)))
                 }),
                 None => parse_target(&target),
             };
-            let (target, duration) = match parsed {
-                Ok(x) => x,
+            let goal = match parsed {
+                Ok(g) => g,
                 Err(e) => {
                     eprintln!("error: {e}");
                     std::process::exit(2);
                 }
+            };
+            let (target, duration, target_usd) = match goal {
+                Goal::Tokens(n) => (n, None, None),
+                Goal::Duration(d) => (u64::MAX, Some(d), None),
+                Goal::Dollars(u) => (u64::MAX, None, Some(u)),
             };
             let mut rng = Rng::from_entropy();
             let harness_name = match harness {
@@ -154,12 +174,13 @@ fn main() {
                     std::process::exit(2);
                 }
             }
-            let goal = match duration {
-                Some(d) => fmt_dur(d),
-                None => format!("{target} tokens"),
+            let goal_label = match (duration, target_usd) {
+                (Some(d), _) => fmt_dur(d),
+                (_, Some(u)) => format!("${u:.2}"),
+                _ => format!("{target} tokens"),
             };
             eprintln!(
-                "burning via {harness_name} · model: {} · effort: {} · {goal}",
+                "burning via {harness_name} · model: {} · effort: {} · {goal_label}",
                 model.as_deref().unwrap_or("default"),
                 effort.as_deref().unwrap_or("default"),
             );
@@ -201,18 +222,28 @@ fn main() {
                 let secs = start.elapsed().as_secs_f64();
                 let burned = r.processed().saturating_sub(baseline);
                 let rate = if secs > 0.1 { burned as f64 / secs } else { 0.0 };
-                match duration {
-                    Some(d) => {
+                match (duration, target_usd) {
+                    (Some(d), _) => {
                         let total = d.as_secs_f64();
                         let pct = (secs / total * 100.0).min(100.0);
                         let left = (total - secs).max(0.0);
                         eprint!(
-                            "\r  {pct:3.0}% · {left:.0}s left · {} tokens · {} calls · {rate:.0} tok/s   ",
+                            "\r  {pct:3.0}% · {left:.0}s left · {} tokens · {} calls · {rate:.0} tok/s · ${:.2}   ",
+                            r.processed(),
+                            r.calls,
+                            r.cost_usd,
+                        );
+                    }
+                    (_, Some(u)) => {
+                        let pct = (r.cost_usd / u * 100.0).min(100.0);
+                        eprint!(
+                            "\r  {pct:3.0}% · ${:.2}/${u:.2} · {} tokens · {} calls · {rate:.0} tok/s   ",
+                            r.cost_usd,
                             r.processed(),
                             r.calls,
                         );
                     }
-                    None => {
+                    _ => {
                         let pct = (r.processed() as f64 / target as f64 * 100.0).min(100.0);
                         let eta = if rate > 0.0 {
                             (target.saturating_sub(r.processed())) as f64 / rate
@@ -220,16 +251,17 @@ fn main() {
                             0.0
                         };
                         eprint!(
-                            "\r  {pct:3.0}% · {}/{target} tokens · {} calls · {rate:.0} tok/s · ETA {eta:.0}s   ",
+                            "\r  {pct:3.0}% · {}/{target} tokens · {} calls · {rate:.0} tok/s · ETA {eta:.0}s · ${:.2}   ",
                             r.processed(),
                             r.calls,
+                            r.cost_usd,
                         );
                     }
                 }
                 let _ = std::io::stderr().flush();
             };
             progress(&report); // paint current progress before the first (slow) burn call
-            match burn(target, deadline, &cal, report, &mut rng, burner.as_mut(), &mut progress) {
+            match burn(target, deadline, target_usd, &cal, report, &mut rng, burner.as_mut(), &mut progress) {
                 Ok(r) => {
                     eprintln!(); // finish the progress line
                     println!("calls:              {}", r.calls);
@@ -239,6 +271,7 @@ fn main() {
                     println!("cache-read tokens:  {}", r.cache_read_input_tokens);
                     println!("raw tokens:         {}  (face value — leaderboard number)", r.raw_tokens());
                     println!("cost-weighted:      {:.0}  (cache reads at 0.1x — real burn)", r.cost_weighted_tokens());
+                    println!("cost:               ${:.4}  (API-equivalent)", r.cost_usd);
                     if r.cache_hit_ratio() > 0.1 {
                         eprintln!(
                             "warning: {:.0}% of input served from cache — padding is being cached, burn is not real",
@@ -276,22 +309,16 @@ mod tests {
     use super::*;
 
     #[test]
-    fn parse_target_handles_tokens_and_durations() {
-        assert_eq!(parse_target("100000").unwrap(), (100_000, None));
-        assert_eq!(
-            parse_target("90s").unwrap(),
-            (u64::MAX, Some(Duration::from_secs(90)))
-        );
-        assert_eq!(
-            parse_target("45m").unwrap(),
-            (u64::MAX, Some(Duration::from_secs(45 * 60)))
-        );
-        assert_eq!(
-            parse_target("2h").unwrap(),
-            (u64::MAX, Some(Duration::from_secs(2 * 3600)))
-        );
+    fn parse_target_handles_tokens_durations_and_dollars() {
+        assert_eq!(parse_target("100000").unwrap(), Goal::Tokens(100_000));
+        assert_eq!(parse_target("90s").unwrap(), Goal::Duration(Duration::from_secs(90)));
+        assert_eq!(parse_target("45m").unwrap(), Goal::Duration(Duration::from_secs(45 * 60)));
+        assert_eq!(parse_target("2h").unwrap(), Goal::Duration(Duration::from_secs(2 * 3600)));
+        assert_eq!(parse_target("5usd").unwrap(), Goal::Dollars(5.0));
+        assert_eq!(parse_target("0.25usd").unwrap(), Goal::Dollars(0.25));
         assert!(parse_target("45x").is_err());
         assert!(parse_target("m").is_err());
+        assert!(parse_target("usd").is_err());
         assert!(parse_target("").is_err());
     }
 

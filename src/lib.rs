@@ -12,7 +12,7 @@ use std::process::Command;
 use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Token usage reported by a backend for a single call.
-#[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Usage {
     pub input_tokens: u64,
     /// Fresh input that writes the cache — full-price burn. Large prompts land
@@ -21,6 +21,9 @@ pub struct Usage {
     pub output_tokens: u64,
     /// Tokens served from cache — cheap (~0.1x) and NOT real burn.
     pub cache_read_input_tokens: u64,
+    /// API-equivalent cost of this call, in USD. claude reports it directly;
+    /// codex is derived from a price snapshot.
+    pub cost_usd: f64,
 }
 
 impl Usage {
@@ -84,6 +87,8 @@ pub struct Report {
     pub cache_creation_input_tokens: u64,
     pub output_tokens: u64,
     pub cache_read_input_tokens: u64,
+    /// Accumulated API-equivalent cost in USD.
+    pub cost_usd: f64,
 }
 
 /// Weight applied to cache-read tokens in cost-weighted accounting: cache
@@ -126,6 +131,7 @@ fn accumulate(report: &mut Report, usage: &Usage) {
     report.cache_creation_input_tokens += usage.cache_creation_input_tokens;
     report.output_tokens += usage.output_tokens;
     report.cache_read_input_tokens += usage.cache_read_input_tokens;
+    report.cost_usd += usage.cost_usd;
 }
 
 /// Linear token model learned at calibration: fresh tokens burned by one call
@@ -195,6 +201,7 @@ pub fn calibrate(
 pub fn burn(
     target_tokens: u64,
     deadline: Option<Instant>,
+    target_usd: Option<f64>,
     cal: &Calibration,
     mut report: Report,
     rng: &mut Rng,
@@ -206,6 +213,7 @@ pub fn burn(
     const MAX_TOKENS_PER_CALL: u64 = 60_000;
     while report.processed() < target_tokens
         && deadline.is_none_or(|d| Instant::now() < d)
+        && target_usd.is_none_or(|u| report.cost_usd < u)
     {
         let want = (target_tokens - report.processed()).min(MAX_TOKENS_PER_CALL);
         let prompt = build_prompt(rng, cal.pad_for(want));
@@ -344,7 +352,9 @@ impl Burner for CodexBurner {
                 String::from_utf8_lossy(&out.stderr).trim()
             ));
         }
-        parse_codex_usage(&out.stdout)
+        let mut usage = parse_codex_usage(&out.stdout)?;
+        usage.cost_usd = codex_cost(self.model.as_deref(), &usage);
+        Ok(usage)
     }
 }
 
@@ -378,7 +388,36 @@ pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
         cache_creation_input_tokens: 0,
         output_tokens: output,
         cache_read_input_tokens: cached,
+        cost_usd: 0.0, // filled in by CodexBurner from CODEX_PRICES
     })
+}
+
+/// Codex price snapshot: (model, input, cached-input, output) in USD per 1M
+/// tokens. codex does not report cost, so dollar output is derived from this.
+//
+// Verified 2026-07-04 against OpenAI's pricing page and OpenRouter. gpt-5-codex
+// has no current listing (legacy) and is assumed to match the 5.1-codex tier.
+// To refresh, see https://developers.openai.com/api/docs/pricing. First entry
+// is the assumed default when `--model` is omitted or unknown.
+pub const CODEX_PRICES: &[(&str, f64, f64, f64)] = &[
+    ("gpt-5.3-codex", 1.75, 0.175, 14.0),
+    ("gpt-5.2-codex", 1.75, 0.175, 14.0),
+    ("gpt-5.1-codex-max", 1.25, 0.125, 10.0),
+    ("gpt-5.1-codex-mini", 0.25, 0.025, 2.0),
+    ("gpt-5.1-codex", 1.25, 0.125, 10.0),
+    ("gpt-5-codex", 1.25, 0.125, 10.0), // legacy: inferred, not listed
+];
+
+/// USD cost of `usage` for a codex `model` (None/unknown → the default, the
+/// first `CODEX_PRICES` entry).
+pub fn codex_cost(model: Option<&str>, usage: &Usage) -> f64 {
+    let (_, inp, cached, out) = model
+        .and_then(|m| CODEX_PRICES.iter().find(|(name, ..)| *name == m).copied())
+        .unwrap_or(CODEX_PRICES[0]);
+    (usage.input_tokens as f64 * inp
+        + usage.cache_read_input_tokens as f64 * cached
+        + usage.output_tokens as f64 * out)
+        / 1_000_000.0
 }
 
 /// Extract the `usage` block from claude's JSON result.
@@ -391,6 +430,8 @@ pub fn parse_usage(stdout: &[u8]) -> Result<Usage, String> {
         cache_creation_input_tokens: u["cache_creation_input_tokens"].as_u64().unwrap_or(0),
         output_tokens: u["output_tokens"].as_u64().unwrap_or(0),
         cache_read_input_tokens: u["cache_read_input_tokens"].as_u64().unwrap_or(0),
+        // `total_cost_usd` sits at the top level of the result, not under usage.
+        cost_usd: v["total_cost_usd"].as_f64().unwrap_or(0.0),
     })
 }
 
@@ -427,14 +468,45 @@ mod tests {
 
     #[test]
     fn parse_usage_reads_fields() {
-        let json = br#"{"usage":{"input_tokens":2000,"cache_creation_input_tokens":23000,"output_tokens":3,"cache_read_input_tokens":40}}"#;
+        let json = br#"{"total_cost_usd":0.0123,"usage":{"input_tokens":2000,"cache_creation_input_tokens":23000,"output_tokens":3,"cache_read_input_tokens":40}}"#;
         let u = parse_usage(json).unwrap();
         assert_eq!(u.input_tokens, 2000);
         assert_eq!(u.cache_creation_input_tokens, 23000);
         assert_eq!(u.output_tokens, 3);
         assert_eq!(u.cache_read_input_tokens, 40);
+        assert!((u.cost_usd - 0.0123).abs() < 1e-9); // top-level total_cost_usd
         // Cache-creation counts as burn; cache-read does not.
         assert_eq!(u.processed(), 25003);
+    }
+
+    #[test]
+    fn codex_cost_uses_price_table() {
+        let usage = Usage {
+            input_tokens: 1_000_000,
+            cache_read_input_tokens: 1_000_000,
+            output_tokens: 1_000_000,
+            ..Default::default()
+        };
+        let (_, inp, cached, out) = CODEX_PRICES[0];
+        let expected = inp + cached + out; // 1M of each ÷ 1M
+        assert!((codex_cost(Some(CODEX_PRICES[0].0), &usage) - expected).abs() < 1e-9);
+        // Unknown/None model falls back to the first entry.
+        assert!((codex_cost(None, &usage) - expected).abs() < 1e-9);
+        assert!((codex_cost(Some("nope"), &usage) - expected).abs() < 1e-9);
+    }
+
+    #[test]
+    fn burn_stops_at_dollar_target() {
+        let mut rng = Rng::from_seed(1);
+        let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
+        let mut b = FakeBurner {
+            per_call: Usage { input_tokens: 1000, cost_usd: 0.10, ..Default::default() },
+        };
+        // $0.25 target, $0.10/call → 3 calls (0.30 ≥ 0.25).
+        let r = burn(u64::MAX, None, Some(0.25), &cal, Report::default(), &mut rng, &mut b, &mut |_| {})
+            .unwrap();
+        assert_eq!(r.calls, 3);
+        assert!((r.cost_usd - 0.30).abs() < 1e-9);
     }
 
     #[test]
@@ -486,7 +558,7 @@ mod tests {
         };
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
         let mut ticks = 0;
-        let r = burn(2500, None, &cal, Report::default(), &mut rng, &mut b, &mut |_| ticks += 1).unwrap();
+        let r = burn(2500, None, None, &cal, Report::default(), &mut rng, &mut b, &mut |_| ticks += 1).unwrap();
         assert_eq!(ticks, 3); // progress fires once per call
         assert_eq!(r.calls, 3); // 1000*3 = 3000 >= 2500
         assert_eq!(r.processed(), 3000);
@@ -512,6 +584,7 @@ mod tests {
             cache_creation_input_tokens: 500,
             output_tokens: 100,
             cache_read_input_tokens: 900,
+            ..Default::default()
         };
         assert_eq!(r.processed(), 1600); // excludes cache reads
         assert_eq!(r.raw_tokens(), 2500); // everything at face value
@@ -528,7 +601,7 @@ mod tests {
         }
         let mut rng = Rng::from_seed(1);
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
-        assert!(burn(100, None, &cal, Report::default(), &mut rng, &mut Failing, &mut |_| {}).is_err());
+        assert!(burn(100, None, None, &cal, Report::default(), &mut rng, &mut Failing, &mut |_| {}).is_err());
     }
 
     #[test]
@@ -537,7 +610,7 @@ mod tests {
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
         let mut b = FakeBurner { per_call: Usage { input_tokens: 1000, ..Default::default() } };
         let past = Instant::now() - std::time::Duration::from_secs(1);
-        let r = burn(u64::MAX, Some(past), &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
+        let r = burn(u64::MAX, Some(past), None, &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
         assert_eq!(r.calls, 0);
     }
 
@@ -547,7 +620,7 @@ mod tests {
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
         let mut b = FakeBurner { per_call: Usage { input_tokens: 1000, ..Default::default() } };
         let future = Instant::now() + std::time::Duration::from_secs(3600);
-        let r = burn(2500, Some(future), &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
+        let r = burn(2500, Some(future), None, &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
         assert_eq!(r.calls, 3);
     }
 

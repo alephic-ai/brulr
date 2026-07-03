@@ -2,8 +2,8 @@
 A CLI for burning AI tokens on purpose.
 
 brülr drives an agent harness (`claude` or `codex`) in a loop, padding each call
-with uncacheable random bytes to burn tokens toward a target — a count, a
-duration, or a wall-clock deadline.
+with uncacheable random bytes to burn tokens toward a target — a token count, a
+duration, a wall-clock deadline, or a dollar amount.
 
 ## Install
 
@@ -20,6 +20,7 @@ against (`claude` and/or `codex`) installed and authenticated.
 brulr burn                 # burn 100000 tokens (default), via claude
 brulr burn 500000          # burn a token count
 brulr burn 45m             # burn for a duration (90s, 45m, 2h)
+brulr burn 5usd            # burn until $5 of API-equivalent cost
 brulr burn --until 07:00   # burn until the next local 07:00
 
 brulr burn --harness codex # burn via codex instead of claude
@@ -50,6 +51,15 @@ The end-of-run report separates **raw tokens** (everything at face value — the
 leaderboard number) from **cost-weighted** tokens (cache reads discounted to
 ~0.1×, since that's what they actually cost). A warning fires if too much input
 is being served from cache, meaning the burn isn't real.
+
+### Cost
+
+The report shows a dollar figure, and `burn 5usd` burns until a target spend.
+`claude` reports its cost directly; `codex` cost is derived from a hardcoded
+price snapshot (`CODEX_PRICES` in `src/lib.rs`) — verify it against current
+pricing before trusting codex dollars. With subscription-authed CLIs these are
+**API-equivalent** dollars, not charges against your subscription; on a metered
+API key it would be real money.
 
 ## Library
 
