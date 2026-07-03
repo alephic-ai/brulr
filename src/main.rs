@@ -1,5 +1,5 @@
 use std::io::Write;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use brulr::{burn, calibrate, ClaudeBurner, Rng, PROBES};
 use clap::{Parser, Subcommand};
@@ -15,19 +15,51 @@ struct Cli {
 enum Cmd {
     /// Burn tokens with the overhead + random-padding strategy.
     Burn {
-        /// Target number of fresh tokens to process.
-        #[arg(default_value_t = 100_000)]
-        target: u64,
+        /// Token count (e.g. 100000) or duration (e.g. 90s, 45m, 2h).
+        #[arg(default_value = "100000")]
+        target: String,
         /// Model to pass to claude (e.g. haiku, opus).
         #[arg(long)]
         model: Option<String>,
     },
 }
 
+/// Parse a burn target: plain integer = tokens, integer + s/m/h = duration.
+fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
+    let (num, unit) = s.split_at(s.len() - s.chars().last().map_or(0, |c| c.len_utf8()));
+    let secs_per_unit = match unit {
+        "s" => Some(1),
+        "m" => Some(60),
+        "h" => Some(3600),
+        _ => None,
+    };
+    match secs_per_unit {
+        Some(mult) => {
+            let n: u64 = num
+                .parse()
+                .map_err(|_| format!("invalid duration: {s} (use e.g. 90s, 45m, 2h)"))?;
+            Ok((u64::MAX, Some(Duration::from_secs(n * mult))))
+        }
+        None => {
+            let n: u64 = s
+                .parse()
+                .map_err(|_| format!("invalid target: {s} (tokens like 100000, or 90s/45m/2h)"))?;
+            Ok((n, None))
+        }
+    }
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
         Cmd::Burn { target, model } => {
+            let (target, duration) = match parse_target(&target) {
+                Ok(x) => x,
+                Err(e) => {
+                    eprintln!("error: {e}");
+                    std::process::exit(2);
+                }
+            };
             let mut rng = Rng::from_entropy();
             let mut burner = ClaudeBurner { model };
 
@@ -55,27 +87,44 @@ fn main() {
                 report.processed(),
             );
 
+            // The deadline clock starts after calibration — `burn 45m` means
+            // 45 minutes of burning, not 45 minutes minus setup.
             let start = Instant::now();
+            let deadline = duration.map(|d| start + d);
             let baseline = report.processed(); // exclude calibration tokens from the rate
             let mut progress = |r: &brulr::Report| {
                 let secs = start.elapsed().as_secs_f64();
                 let burned = r.processed().saturating_sub(baseline);
                 let rate = if secs > 0.1 { burned as f64 / secs } else { 0.0 };
-                let pct = (r.processed() as f64 / target as f64 * 100.0).min(100.0);
-                let eta = if rate > 0.0 {
-                    (target.saturating_sub(r.processed())) as f64 / rate
-                } else {
-                    0.0
-                };
-                eprint!(
-                    "\r  {pct:3.0}% · {}/{target} tokens · {} calls · {rate:.0} tok/s · ETA {eta:.0}s   ",
-                    r.processed(),
-                    r.calls,
-                );
+                match duration {
+                    Some(d) => {
+                        let total = d.as_secs_f64();
+                        let pct = (secs / total * 100.0).min(100.0);
+                        let left = (total - secs).max(0.0);
+                        eprint!(
+                            "\r  {pct:3.0}% · {left:.0}s left · {} tokens · {} calls · {rate:.0} tok/s   ",
+                            r.processed(),
+                            r.calls,
+                        );
+                    }
+                    None => {
+                        let pct = (r.processed() as f64 / target as f64 * 100.0).min(100.0);
+                        let eta = if rate > 0.0 {
+                            (target.saturating_sub(r.processed())) as f64 / rate
+                        } else {
+                            0.0
+                        };
+                        eprint!(
+                            "\r  {pct:3.0}% · {}/{target} tokens · {} calls · {rate:.0} tok/s · ETA {eta:.0}s   ",
+                            r.processed(),
+                            r.calls,
+                        );
+                    }
+                }
                 let _ = std::io::stderr().flush();
             };
             progress(&report); // paint current progress before the first (slow) burn call
-            match burn(target, &cal, report, &mut rng, &mut burner, &mut progress) {
+            match burn(target, deadline, &cal, report, &mut rng, &mut burner, &mut progress) {
                 Ok(r) => {
                     eprintln!(); // finish the progress line
                     println!("calls:             {}", r.calls);
@@ -96,5 +145,30 @@ fn main() {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn parse_target_handles_tokens_and_durations() {
+        assert_eq!(parse_target("100000").unwrap(), (100_000, None));
+        assert_eq!(
+            parse_target("90s").unwrap(),
+            (u64::MAX, Some(Duration::from_secs(90)))
+        );
+        assert_eq!(
+            parse_target("45m").unwrap(),
+            (u64::MAX, Some(Duration::from_secs(45 * 60)))
+        );
+        assert_eq!(
+            parse_target("2h").unwrap(),
+            (u64::MAX, Some(Duration::from_secs(2 * 3600)))
+        );
+        assert!(parse_target("45x").is_err());
+        assert!(parse_target("m").is_err());
+        assert!(parse_target("").is_err());
     }
 }

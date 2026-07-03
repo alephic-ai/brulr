@@ -9,7 +9,7 @@
 //! backend and tests use a fake one.
 
 use std::process::Command;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Instant, SystemTime, UNIX_EPOCH};
 
 /// Token usage reported by a backend for a single call.
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -168,13 +168,16 @@ pub fn calibrate(
 }
 
 /// Run the overhead burn loop until `target_tokens` fresh tokens are
-/// processed, continuing from `report` (e.g. the calibration total). Each
+/// processed or `deadline` passes, continuing from `report` (e.g. the
+/// calibration total). The deadline is checked before each call, never
+/// mid-call, so a call in flight when it passes completes normally. Each
 /// call's pad is sized from `cal` to burn the remaining tokens — capped for
 /// request-size safety, and trimmed on the final call to avoid overshoot.
-/// `on_progress` fires after every call; the library stays clock-free, so
-/// timing/ETA is the caller's concern.
+/// `on_progress` fires after every call; rate/ETA math is the caller's
+/// concern.
 pub fn burn(
     target_tokens: u64,
+    deadline: Option<Instant>,
     cal: &Calibration,
     mut report: Report,
     rng: &mut Rng,
@@ -184,7 +187,9 @@ pub fn burn(
     // ponytail: fixed request-size rail; probe to the backend's real ceiling
     // if minimizing round trips ever matters more than simplicity.
     const MAX_TOKENS_PER_CALL: u64 = 60_000;
-    while report.processed() < target_tokens {
+    while report.processed() < target_tokens
+        && deadline.is_none_or(|d| Instant::now() < d)
+    {
         let want = (target_tokens - report.processed()).min(MAX_TOKENS_PER_CALL);
         let prompt = build_prompt(rng, cal.pad_for(want));
         let usage = burner.run(&prompt)?;
@@ -311,7 +316,7 @@ mod tests {
         };
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
         let mut ticks = 0;
-        let r = burn(2500, &cal, Report::default(), &mut rng, &mut b, &mut |_| ticks += 1).unwrap();
+        let r = burn(2500, None, &cal, Report::default(), &mut rng, &mut b, &mut |_| ticks += 1).unwrap();
         assert_eq!(ticks, 3); // progress fires once per call
         assert_eq!(r.calls, 3); // 1000*3 = 3000 >= 2500
         assert_eq!(r.processed(), 3000);
@@ -339,7 +344,27 @@ mod tests {
         }
         let mut rng = Rng::from_seed(1);
         let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
-        assert!(burn(100, &cal, Report::default(), &mut rng, &mut Failing, &mut |_| {}).is_err());
+        assert!(burn(100, None, &cal, Report::default(), &mut rng, &mut Failing, &mut |_| {}).is_err());
+    }
+
+    #[test]
+    fn expired_deadline_stops_before_first_call() {
+        let mut rng = Rng::from_seed(1);
+        let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
+        let mut b = FakeBurner { per_call: Usage { input_tokens: 1000, ..Default::default() } };
+        let past = Instant::now() - std::time::Duration::from_secs(1);
+        let r = burn(u64::MAX, Some(past), &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
+        assert_eq!(r.calls, 0);
+    }
+
+    #[test]
+    fn future_deadline_still_honors_token_target() {
+        let mut rng = Rng::from_seed(1);
+        let cal = Calibration { overhead: 0.0, tokens_per_byte: 1.0 };
+        let mut b = FakeBurner { per_call: Usage { input_tokens: 1000, ..Default::default() } };
+        let future = Instant::now() + std::time::Duration::from_secs(3600);
+        let r = burn(2500, Some(future), &cal, Report::default(), &mut rng, &mut b, &mut |_| {}).unwrap();
+        assert_eq!(r.calls, 3);
     }
 
     // Backend whose usage scales with prompt length, so calibration can
