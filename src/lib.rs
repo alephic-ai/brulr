@@ -86,9 +86,26 @@ pub struct Report {
     pub cache_read_input_tokens: u64,
 }
 
+/// Weight applied to cache-read tokens in cost-weighted accounting: cache
+/// reads cost roughly a tenth of fresh input.
+// ponytail: cache-writes are weighted 1.0 here; real APIs charge ~1.25x —
+// bump if that precision ever matters.
+pub const CACHE_READ_WEIGHT: f64 = 0.1;
+
 impl Report {
     pub fn processed(&self) -> u64 {
         self.input_tokens + self.cache_creation_input_tokens + self.output_tokens
+    }
+
+    /// Every token at face value — the inflated number leaderboards quote.
+    pub fn raw_tokens(&self) -> u64 {
+        self.processed() + self.cache_read_input_tokens
+    }
+
+    /// Honest burn: fresh input/output/cache-writes at full weight, cache
+    /// reads discounted to what they actually cost.
+    pub fn cost_weighted_tokens(&self) -> f64 {
+        self.processed() as f64 + self.cache_read_input_tokens as f64 * CACHE_READ_WEIGHT
     }
 
     /// Fraction of input served from cache. High means the padding is being
@@ -422,6 +439,20 @@ mod tests {
             ..Default::default()
         };
         assert!((r.cache_hit_ratio() - 0.9).abs() < 1e-9);
+    }
+
+    #[test]
+    fn accounting_separates_raw_from_cost_weighted() {
+        let r = Report {
+            calls: 1,
+            input_tokens: 1000,
+            cache_creation_input_tokens: 500,
+            output_tokens: 100,
+            cache_read_input_tokens: 900,
+        };
+        assert_eq!(r.processed(), 1600); // excludes cache reads
+        assert_eq!(r.raw_tokens(), 2500); // everything at face value
+        assert!((r.cost_weighted_tokens() - 1690.0).abs() < 1e-9); // 1600 + 0.1*900
     }
 
     #[test]

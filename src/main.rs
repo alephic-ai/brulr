@@ -175,11 +175,13 @@ fn main() {
             match burn(target, deadline, &cal, report, &mut rng, burner.as_mut(), &mut progress) {
                 Ok(r) => {
                     eprintln!(); // finish the progress line
-                    println!("calls:             {}", r.calls);
-                    println!("input tokens:      {}", r.input_tokens);
-                    println!("output tokens:     {}", r.output_tokens);
-                    println!("cache-read tokens: {}", r.cache_read_input_tokens);
-                    println!("processed:         {}", r.processed());
+                    println!("calls:              {}", r.calls);
+                    println!("input tokens:       {}", r.input_tokens);
+                    println!("cache-write tokens: {}", r.cache_creation_input_tokens);
+                    println!("output tokens:      {}", r.output_tokens);
+                    println!("cache-read tokens:  {}", r.cache_read_input_tokens);
+                    println!("raw tokens:         {}  (face value — leaderboard number)", r.raw_tokens());
+                    println!("cost-weighted:      {:.0}  (cache reads at 0.1x — real burn)", r.cost_weighted_tokens());
                     if r.cache_hit_ratio() > 0.1 {
                         eprintln!(
                             "warning: {:.0}% of input served from cache — padding is being cached, burn is not real",
