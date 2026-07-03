@@ -2,6 +2,7 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use brulr::{burn, calibrate, ClaudeBurner, Rng, PROBES};
+use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand};
 
 #[derive(Parser)]
@@ -18,10 +19,37 @@ enum Cmd {
         /// Token count (e.g. 100000) or duration (e.g. 90s, 45m, 2h).
         #[arg(default_value = "100000")]
         target: String,
+        /// Burn until the next local wall-clock time HH:MM (overrides target).
+        #[arg(long)]
+        until: Option<String>,
         /// Model to pass to claude (e.g. haiku, opus).
         #[arg(long)]
         model: Option<String>,
     },
+}
+
+/// Parse "HH:MM" into seconds-of-day.
+fn parse_hhmm(s: &str) -> Result<u32, String> {
+    let bad = || format!("invalid time: {s} (use HH:MM, 24-hour)");
+    let (h, m) = s.split_once(':').ok_or_else(bad)?;
+    let h: u32 = h.parse().map_err(|_| bad())?;
+    let m: u32 = m.parse().map_err(|_| bad())?;
+    if h > 23 || m > 59 {
+        return Err(bad());
+    }
+    Ok(h * 3600 + m * 60)
+}
+
+/// Seconds from `now` to the next occurrence of `target` on a 24h clock.
+/// Exact match maps to a full day rather than zero (don't burn nothing).
+// ponytail: assumes 86400s/day, so a DST change mid-window shifts the stop by
+// an hour — fine for a burn tool.
+fn secs_until(now: u32, target: u32) -> u64 {
+    const DAY: u32 = 86_400;
+    match (target + DAY - now) % DAY {
+        0 => DAY as u64,
+        n => n as u64,
+    }
 }
 
 /// Parse a burn target: plain integer = tokens, integer + s/m/h = duration.
@@ -52,8 +80,16 @@ fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Burn { target, model } => {
-            let (target, duration) = match parse_target(&target) {
+        Cmd::Burn { target, until, model } => {
+            let parsed = match &until {
+                Some(hhmm) => parse_hhmm(hhmm).map(|target_sod| {
+                    let now = Local::now();
+                    let now_sod = now.hour() * 3600 + now.minute() * 60 + now.second();
+                    (u64::MAX, Some(Duration::from_secs(secs_until(now_sod, target_sod))))
+                }),
+                None => parse_target(&target),
+            };
+            let (target, duration) = match parsed {
                 Ok(x) => x,
                 Err(e) => {
                     eprintln!("error: {e}");
@@ -170,5 +206,26 @@ mod tests {
         assert!(parse_target("45x").is_err());
         assert!(parse_target("m").is_err());
         assert!(parse_target("").is_err());
+    }
+
+    #[test]
+    fn parse_hhmm_valid_and_invalid() {
+        assert_eq!(parse_hhmm("00:00").unwrap(), 0);
+        assert_eq!(parse_hhmm("07:00").unwrap(), 7 * 3600);
+        assert_eq!(parse_hhmm("23:59").unwrap(), 23 * 3600 + 59 * 60);
+        assert!(parse_hhmm("24:00").is_err());
+        assert!(parse_hhmm("07:60").is_err());
+        assert!(parse_hhmm("0700").is_err());
+        assert!(parse_hhmm("").is_err());
+    }
+
+    #[test]
+    fn secs_until_covers_before_after_and_exact() {
+        // target later today
+        assert_eq!(secs_until(6 * 3600, 7 * 3600), 3600);
+        // target already passed → next day
+        assert_eq!(secs_until(8 * 3600, 7 * 3600), 23 * 3600);
+        // exact match → full day, never zero
+        assert_eq!(secs_until(7 * 3600, 7 * 3600), 86_400);
     }
 }
