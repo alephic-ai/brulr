@@ -262,9 +262,19 @@ pub const CODEX_MODELS: &[&str] = &[
     "gpt-5-codex",
 ];
 
+/// Reasoning-effort levels the `claude` harness accepts.
+// To update: `claude --help` lists the values on the `--effort <level>` line.
+pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+
+/// Reasoning-effort levels the `codex` harness accepts (config
+/// `model_reasoning_effort`).
+// To update: see codex's `model_reasoning_effort` config documentation.
+pub const CODEX_EFFORTS: &[&str] = &["minimal", "low", "medium", "high"];
+
 /// The real backend: shells out to the `claude` CLI in one-shot mode.
 pub struct ClaudeBurner {
     pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 impl Burner for ClaudeBurner {
@@ -280,6 +290,9 @@ impl Burner for ClaudeBurner {
         ]);
         if let Some(m) = &self.model {
             cmd.args(["--model", m]);
+        }
+        if let Some(e) = &self.effort {
+            cmd.args(["--effort", e]);
         }
         cmd.arg("--").arg(prompt); // `--` matters: --tools is variadic
         let out = cmd.output().map_err(|e| format!("spawn claude: {e}"))?;
@@ -297,6 +310,7 @@ impl Burner for ClaudeBurner {
 /// The `codex` backend: shells out to `codex exec` in non-interactive mode.
 pub struct CodexBurner {
     pub model: Option<String>,
+    pub effort: Option<String>,
 }
 
 impl Burner for CodexBurner {
@@ -317,6 +331,9 @@ impl Burner for CodexBurner {
         ]);
         if let Some(m) = &self.model {
             cmd.args(["-m", m]);
+        }
+        if let Some(e) = &self.effort {
+            cmd.args(["-c", &format!("model_reasoning_effort={e}")]);
         }
         cmd.arg(prompt);
         let out = cmd.output().map_err(|e| format!("spawn codex: {e}"))?;

@@ -2,7 +2,8 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use brulr::{
-    burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, CLAUDE_MODELS, CODEX_MODELS, PROBES,
+    burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, CLAUDE_EFFORTS, CLAUDE_MODELS,
+    CODEX_EFFORTS, CODEX_MODELS, PROBES,
 };
 use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -37,6 +38,10 @@ enum Cmd {
         /// harness's own default).
         #[arg(long)]
         model: Option<String>,
+        /// Reasoning effort (claude: low/medium/high/xhigh/max; codex:
+        /// minimal/low/medium/high). Default: the harness/model default.
+        #[arg(long)]
+        effort: Option<String>,
     },
     /// List the known models for a harness (snapshot; any model still works).
     Models {
@@ -115,7 +120,7 @@ fn fmt_dur(d: Duration) -> String {
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
-        Cmd::Burn { target, until, harness, model } => {
+        Cmd::Burn { target, until, harness, model, effort } => {
             let parsed = match &until {
                 Some(hhmm) => parse_hhmm(hhmm).map(|target_sod| {
                     let now = Local::now();
@@ -136,17 +141,31 @@ fn main() {
                 Harness::Claude => "claude",
                 Harness::Codex => "codex",
             };
+            let efforts = match harness {
+                Harness::Claude => CLAUDE_EFFORTS,
+                Harness::Codex => CODEX_EFFORTS,
+            };
+            if let Some(e) = &effort {
+                if !efforts.contains(&e.as_str()) {
+                    eprintln!(
+                        "error: invalid effort '{e}' for {harness_name}; accepted: {}",
+                        efforts.join(", "),
+                    );
+                    std::process::exit(2);
+                }
+            }
             let goal = match duration {
                 Some(d) => fmt_dur(d),
                 None => format!("{target} tokens"),
             };
             eprintln!(
-                "burning via {harness_name} · model: {} · {goal}",
+                "burning via {harness_name} · model: {} · effort: {} · {goal}",
                 model.as_deref().unwrap_or("default"),
+                effort.as_deref().unwrap_or("default"),
             );
             let mut burner: Box<dyn Burner> = match harness {
-                Harness::Claude => Box::new(ClaudeBurner { model }),
-                Harness::Codex => Box::new(CodexBurner { model }),
+                Harness::Claude => Box::new(ClaudeBurner { model, effort }),
+                Harness::Codex => Box::new(CodexBurner { model, effort }),
             };
 
             eprint!("\r  calibrating… 0/{PROBES} probes");
