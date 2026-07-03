@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    branches: [master]
+    paths: [Cargo.toml]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Create release if version is new
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version=$(cargo pkgid | cut -d'#' -f2)
+          tag="v$version"
+          if gh release view "$tag" >/dev/null 2>&1; then
+            echo "$tag already released, skipping"
+          else
+            gh release create "$tag" --generate-notes
+          fi
