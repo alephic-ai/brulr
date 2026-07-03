@@ -5,6 +5,25 @@ brülr runs an agent harness (`claude` or `codex`) in a loop and pads every call
 with uncacheable random bytes. It burns toward whatever you give it: a token
 count, a duration, a wall-clock time, or a dollar amount.
 
+## Why
+
+Some companies now measure how well people are "adopting AI" by counting the
+tokens they burn. There are dashboards for it. They rank everyone, put the
+biggest spenders at the top as power users, and mark anyone with little or no
+spend as inactive or as a coaching opportunity.
+
+But burning tokens is not the same as doing work. Solve something in one good
+prompt, use a cheaper model, or just not need the thing this week, and you look
+identical to someone who did nothing. So the metric quietly rewards waste, and
+the person being careful with it comes off worse than the person spraying tokens
+at everything.
+
+brülr is what happens if you take that metric at its word. If the score is only
+consumption, you can win it without doing anything, so brülr does exactly that:
+tokens in, nothing out. Point it at your quota and it climbs the leaderboard
+while producing nothing at all. If a program this dumb can top your chart, the
+chart was never measuring what you thought it was.
+
 ## Install
 
 ```sh
