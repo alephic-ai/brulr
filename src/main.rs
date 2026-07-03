@@ -1,7 +1,9 @@
 use std::io::Write;
 use std::time::{Duration, Instant};
 
-use brulr::{burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, PROBES};
+use brulr::{
+    burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, CLAUDE_MODELS, CODEX_MODELS, PROBES,
+};
 use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand, ValueEnum};
 
@@ -31,9 +33,16 @@ enum Cmd {
         /// Agent harness CLI to burn against.
         #[arg(long, value_enum, default_value_t = Harness::Claude)]
         harness: Harness,
-        /// Model to pass to the harness (e.g. haiku/opus, or a codex model).
+        /// Model to pass to the harness (see `brulr models`; default is the
+        /// harness's own default).
         #[arg(long)]
         model: Option<String>,
+    },
+    /// List the known models for a harness (snapshot; any model still works).
+    Models {
+        /// Harness to list models for; omit to list all.
+        #[arg(long, value_enum)]
+        harness: Option<Harness>,
     },
 }
 
@@ -86,6 +95,23 @@ fn parse_target(s: &str) -> Result<(u64, Option<Duration>), String> {
     }
 }
 
+/// Compact duration for display: 90s, 45m, 2h, 1h30m.
+fn fmt_dur(d: Duration) -> String {
+    let s = d.as_secs();
+    let (h, m, sec) = (s / 3600, (s % 3600) / 60, s % 60);
+    let mut out = String::new();
+    if h > 0 {
+        out += &format!("{h}h");
+    }
+    if m > 0 {
+        out += &format!("{m}m");
+    }
+    if sec > 0 || out.is_empty() {
+        out += &format!("{sec}s");
+    }
+    out
+}
+
 fn main() {
     let cli = Cli::parse();
     match cli.cmd {
@@ -106,6 +132,18 @@ fn main() {
                 }
             };
             let mut rng = Rng::from_entropy();
+            let harness_name = match harness {
+                Harness::Claude => "claude",
+                Harness::Codex => "codex",
+            };
+            let goal = match duration {
+                Some(d) => fmt_dur(d),
+                None => format!("{target} tokens"),
+            };
+            eprintln!(
+                "burning via {harness_name} · model: {} · {goal}",
+                model.as_deref().unwrap_or("default"),
+            );
             let mut burner: Box<dyn Burner> = match harness {
                 Harness::Claude => Box::new(ClaudeBurner { model }),
                 Harness::Codex => Box::new(CodexBurner { model }),
@@ -195,6 +233,22 @@ fn main() {
                 }
             }
         }
+        Cmd::Models { harness } => {
+            let list = |name: &str, models: &[&str]| {
+                println!("{name}:");
+                for m in models {
+                    println!("  {m}");
+                }
+            };
+            match harness {
+                Some(Harness::Claude) => list("claude", CLAUDE_MODELS),
+                Some(Harness::Codex) => list("codex", CODEX_MODELS),
+                None => {
+                    list("claude", CLAUDE_MODELS);
+                    list("codex", CODEX_MODELS);
+                }
+            }
+        }
     }
 }
 
@@ -220,6 +274,14 @@ mod tests {
         assert!(parse_target("45x").is_err());
         assert!(parse_target("m").is_err());
         assert!(parse_target("").is_err());
+    }
+
+    #[test]
+    fn fmt_dur_is_compact() {
+        assert_eq!(fmt_dur(Duration::from_secs(90)), "1m30s");
+        assert_eq!(fmt_dur(Duration::from_secs(45 * 60)), "45m");
+        assert_eq!(fmt_dur(Duration::from_secs(2 * 3600)), "2h");
+        assert_eq!(fmt_dur(Duration::from_secs(0)), "0s");
     }
 
     #[test]
