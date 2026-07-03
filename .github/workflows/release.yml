@@ -11,16 +11,51 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.create.outputs.tag }}
+      created: ${{ steps.create.outputs.created }}
     steps:
       - uses: actions/checkout@v7
       - name: Create release if version is new
+        id: create
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
           version=$(cargo pkgid | cut -d'#' -f2)
           tag="v$version"
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
           if gh release view "$tag" >/dev/null 2>&1; then
             echo "$tag already released, skipping"
+            echo "created=false" >> "$GITHUB_OUTPUT"
           else
             gh release create "$tag" --generate-notes
+            echo "created=true" >> "$GITHUB_OUTPUT"
           fi
+
+  assets:
+    needs: release
+    if: needs.release.outputs.created == 'true'
+    strategy:
+      matrix:
+        include:
+          - os: ubuntu-latest
+            target: x86_64-unknown-linux-gnu
+          - os: macos-latest
+            target: aarch64-apple-darwin
+          - os: windows-latest
+            target: x86_64-pc-windows-msvc
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v7
+      - name: Build and upload asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        shell: bash
+        run: |
+          cargo build --release
+          tag='${{ needs.release.outputs.tag }}'
+          bin=target/release/brulr
+          [ -f "$bin.exe" ] && bin="$bin.exe"
+          asset="brulr-$tag-${{ matrix.target }}.tar.gz"
+          tar -czf "$asset" -C "$(dirname "$bin")" "$(basename "$bin")"
+          gh release upload "$tag" "$asset"
