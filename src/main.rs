@@ -25,7 +25,8 @@ struct Cli {
 enum Cmd {
     /// Burn tokens with the overhead + random-padding strategy.
     Burn {
-        /// Token count (e.g. 100000) or duration (e.g. 90s, 45m, 2h).
+        /// Token count (e.g. 100000), duration (e.g. 90s, 45m, 2h), or dollar
+        /// amount (e.g. 5usd, 0.25usd).
         #[arg(default_value = "100000")]
         target: String,
         /// Burn until the next local wall-clock time HH:MM (overrides target).

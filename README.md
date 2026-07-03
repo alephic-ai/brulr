@@ -32,6 +32,8 @@ Run `brulr burn --help` for all flags.
 
 ### Options
 
+- `<target>` — what to burn toward: a token count (`100000`), a duration
+  (`90s`/`45m`/`2h`), or a dollar amount (`5usd`/`0.25usd`). Default `100000`.
 - `--harness <claude|codex>` — which agent CLI to burn against (default `claude`).
 - `--model <id>` — model to pass through; default is the harness's own default.
   See `brulr models` for known ids (any id the harness accepts still works).
