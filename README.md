@@ -1,9 +1,9 @@
 # brülr
 A CLI for burning AI tokens on purpose.
 
-brülr drives an agent harness (`claude` or `codex`) in a loop, padding each call
-with uncacheable random bytes to burn tokens toward a target — a token count, a
-duration, a wall-clock deadline, or a dollar amount.
+brülr runs an agent harness (`claude` or `codex`) in a loop and pads every call
+with uncacheable random bytes. It burns toward whatever you give it: a token
+count, a duration, a wall-clock time, or a dollar amount.
 
 ## Install
 
@@ -11,8 +11,8 @@ duration, a wall-clock deadline, or a dollar amount.
 cargo build --release
 ```
 
-The binary lands in `target/release/brulr`. It needs whichever harness you burn
-against (`claude` and/or `codex`) installed and authenticated.
+The binary lands in `target/release/brulr`. You also need whichever harness you
+burn against (`claude` and/or `codex`) installed and logged in.
 
 ## Usage
 
@@ -32,38 +32,39 @@ Run `brulr burn --help` for all flags.
 
 ### Options
 
-- `<target>` — what to burn toward: a token count (`100000`), a duration
-  (`90s`/`45m`/`2h`), or a dollar amount (`5usd`/`0.25usd`). Default `100000`.
-- `--harness <claude|codex>` — which agent CLI to burn against (default `claude`).
-- `--model <id>` — model to pass through; default is the harness's own default.
-  See `brulr models` for known ids (any id the harness accepts still works).
-- `--effort <level>` — reasoning effort. claude: `low|medium|high|xhigh|max`;
-  codex: `minimal|low|medium|high`. Default: the harness/model default.
-- `--until <HH:MM>` — burn until the next occurrence of a local wall-clock time.
+- `<target>`: what to burn toward. A token count (`100000`), a duration
+  (`90s`/`45m`/`2h`), or a dollar amount (`5usd`/`0.25usd`). Defaults to `100000`.
+- `--harness <claude|codex>`: which agent CLI to burn against. Defaults to `claude`.
+- `--model <id>`: model to pass through. Defaults to the harness's own default.
+  Run `brulr models` for known ids; any id the harness accepts still works.
+- `--effort <level>`: reasoning effort. claude takes `low|medium|high|xhigh|max`,
+  codex takes `minimal|low|medium|high`. Defaults to the harness/model default.
+- `--until <HH:MM>`: burn until the next occurrence of a local wall-clock time.
 
 ## How it works
 
-Each call carries a fixed per-call overhead plus a block of random hex padding,
-placed at the front so prefix caching can't absorb it. On start, brülr
-**calibrates** with two probe calls to learn the per-call overhead and
-tokens-per-byte, then sizes each call's padding to hit the target — trimming the
-last call so it doesn't overshoot.
+Every call pays a fixed per-call overhead and then carries a block of random hex
+padding. The padding sits at the front of the prompt so prefix caching can't
+absorb it. At startup brülr makes two probe calls to measure the overhead and
+the tokens-per-byte rate, then sizes each call's padding to reach the target. It
+trims the last call so the run doesn't overshoot.
 
-The end-of-run report separates **raw tokens** (everything at face value — the
-leaderboard number) from **cost-weighted** tokens (cache reads discounted to
-~0.1×, since that's what they actually cost). A warning fires if too much input
-is being served from cache, meaning the burn isn't real.
+The end-of-run report gives two token totals. Raw tokens count everything at
+face value, which is the number you'd quote on a leaderboard. Cost-weighted
+tokens discount cache reads to about a tenth, since that is closer to what they
+actually cost. If too much of the input is being served from cache, the run
+prints a warning: the padding is being cached and the burn isn't real.
 
 ### Cost
 
-The report shows a dollar figure, and `burn 5usd` burns until a target spend.
-`claude` reports its cost directly; `codex` cost is derived from a hardcoded
-price snapshot (`CODEX_PRICES` in `src/lib.rs`) — verify it against current
-pricing before trusting codex dollars. With subscription-authed CLIs these are
-**API-equivalent** dollars, not charges against your subscription; on a metered
-API key it would be real money.
+The report also prints a dollar figure, and `burn 5usd` burns until it hits a
+target spend. `claude` reports its own cost, so those numbers are exact. `codex`
+doesn't, so its cost comes from a hardcoded price snapshot (`CODEX_PRICES` in
+`src/lib.rs`); check it against current pricing before you trust the codex
+dollars. On a subscription these are API-equivalent dollars, not charges against
+your plan. On a metered API key it would be real money.
 
 ## Library
 
-The crate is also a library: implement the `Burner` trait for a new backend, or
-call `calibrate` / `burn` directly. `brulr` (the binary) is a thin CLI over it.
+The crate is also a library. Implement the `Burner` trait to add a backend, or
+call `calibrate` and `burn` yourself. The `brulr` binary is a thin CLI on top.

@@ -67,7 +67,7 @@ fn parse_hhmm(s: &str) -> Result<u32, String> {
 /// Seconds from `now` to the next occurrence of `target` on a 24h clock.
 /// Exact match maps to a full day rather than zero (don't burn nothing).
 // ponytail: assumes 86400s/day, so a DST change mid-window shifts the stop by
-// an hour — fine for a burn tool.
+// an hour, which is fine for a burn tool.
 fn secs_until(now: u32, target: u32) -> u64 {
     const DAY: u32 = 86_400;
     match (target + DAY - now) % DAY {
@@ -214,7 +214,7 @@ fn main() {
                 report.processed(),
             );
 
-            // The deadline clock starts after calibration — `burn 45m` means
+            // The deadline clock starts after calibration, so `burn 45m` means
             // 45 minutes of burning, not 45 minutes minus setup.
             let start = Instant::now();
             let deadline = duration.map(|d| start + d);
@@ -270,12 +270,12 @@ fn main() {
                     println!("cache-write tokens: {}", r.cache_creation_input_tokens);
                     println!("output tokens:      {}", r.output_tokens);
                     println!("cache-read tokens:  {}", r.cache_read_input_tokens);
-                    println!("raw tokens:         {}  (face value — leaderboard number)", r.raw_tokens());
-                    println!("cost-weighted:      {:.0}  (cache reads at 0.1x — real burn)", r.cost_weighted_tokens());
+                    println!("raw tokens:         {}  (face value, leaderboard number)", r.raw_tokens());
+                    println!("cost-weighted:      {:.0}  (cache reads at 0.1x, real burn)", r.cost_weighted_tokens());
                     println!("cost:               ${:.4}  (API-equivalent)", r.cost_usd);
                     if r.cache_hit_ratio() > 0.1 {
                         eprintln!(
-                            "warning: {:.0}% of input served from cache — padding is being cached, burn is not real",
+                            "warning: {:.0}% of input served from cache; padding is being cached, burn is not real",
                             r.cache_hit_ratio() * 100.0
                         );
                     }

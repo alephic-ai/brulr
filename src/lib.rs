@@ -1,4 +1,4 @@
-//! brülr — burn AI tokens on purpose.
+//! brülr: burn AI tokens on purpose.
 //!
 //! The overhead strategy: send many calls, each padded with uncacheable
 //! random bytes. Input tokens ingest far faster than output generates, so
@@ -15,11 +15,11 @@ use std::time::{Instant, SystemTime, UNIX_EPOCH};
 #[derive(Debug, Clone, Copy, Default, PartialEq)]
 pub struct Usage {
     pub input_tokens: u64,
-    /// Fresh input that writes the cache — full-price burn. Large prompts land
+    /// Fresh input that writes the cache, at full price. Large prompts land
     /// here rather than in `input_tokens`.
     pub cache_creation_input_tokens: u64,
     pub output_tokens: u64,
-    /// Tokens served from cache — cheap (~0.1x) and NOT real burn.
+    /// Tokens served from cache: cheap (~0.1x) and NOT real burn.
     pub cache_read_input_tokens: u64,
     /// API-equivalent cost of this call, in USD. claude reports it directly;
     /// codex is derived from a price snapshot.
@@ -27,7 +27,7 @@ pub struct Usage {
 }
 
 impl Usage {
-    /// Fresh tokens actually processed — what counts toward a burn target.
+    /// Fresh tokens actually processed. This is what counts toward a burn target.
     pub fn processed(&self) -> u64 {
         self.input_tokens + self.cache_creation_input_tokens + self.output_tokens
     }
@@ -93,8 +93,8 @@ pub struct Report {
 
 /// Weight applied to cache-read tokens in cost-weighted accounting: cache
 /// reads cost roughly a tenth of fresh input.
-// ponytail: cache-writes are weighted 1.0 here; real APIs charge ~1.25x —
-// bump if that precision ever matters.
+// ponytail: cache-writes are weighted 1.0 here; real APIs charge about 1.25x.
+// Bump it if that precision ever matters.
 pub const CACHE_READ_WEIGHT: f64 = 0.1;
 
 impl Report {
@@ -102,7 +102,7 @@ impl Report {
         self.input_tokens + self.cache_creation_input_tokens + self.output_tokens
     }
 
-    /// Every token at face value — the inflated number leaderboards quote.
+    /// Every token at face value. This is the inflated number leaderboards quote.
     pub fn raw_tokens(&self) -> u64 {
         self.processed() + self.cache_read_input_tokens
     }
@@ -114,7 +114,7 @@ impl Report {
     }
 
     /// Fraction of input served from cache. High means the padding is being
-    /// cached and the burn is not real — entropy should keep this near zero.
+    /// cached and the burn is not real. Entropy should keep this near zero.
     pub fn cache_hit_ratio(&self) -> f64 {
         let total = self.input_tokens + self.cache_creation_input_tokens + self.cache_read_input_tokens;
         if total == 0 {
@@ -142,8 +142,8 @@ pub struct Calibration {
     pub tokens_per_byte: f64,
 }
 
-/// Hard cap on padding per call — bounds request size and, crucially, keeps a
-/// degenerate (near-zero) slope from asking for a usize::MAX-sized string.
+/// Hard cap on padding per call. It bounds request size and, crucially, keeps
+/// a degenerate (near-zero) slope from asking for a usize::MAX-sized string.
 pub const MAX_PAD_BYTES: usize = 1_000_000;
 
 impl Calibration {
@@ -194,7 +194,7 @@ pub fn calibrate(
 /// processed or `deadline` passes, continuing from `report` (e.g. the
 /// calibration total). The deadline is checked before each call, never
 /// mid-call, so a call in flight when it passes completes normally. Each
-/// call's pad is sized from `cal` to burn the remaining tokens — capped for
+/// call's pad is sized from `cal` to burn the remaining tokens, capped for
 /// request-size safety, and trimmed on the final call to avoid overshoot.
 /// `on_progress` fires after every call; rate/ETA math is the caller's
 /// concern.
@@ -224,12 +224,12 @@ pub fn burn(
     Ok(report)
 }
 
-/// Known models for the `claude` harness — a static snapshot fetched
+/// Known models for the `claude` harness: a static snapshot fetched
 /// 2026-07-03 from the provider model API. `--model` is a free pass-through,
 /// so newer models still work; this list is only for discovery.
 //
 // ponytail: hardcoded snapshot, will go stale. To refresh (needs an
-// ANTHROPIC_API_KEY — the subscription `claude` CLI does not expose one):
+// ANTHROPIC_API_KEY, which the subscription `claude` CLI does not expose):
 //
 //   curl -s https://api.anthropic.com/v1/models \
 //     -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
@@ -251,9 +251,9 @@ pub const CLAUDE_MODELS: &[&str] = &[
 
 /// Codex-family models for the `codex` harness (OpenAI). Same snapshot/caveat
 /// as [`CLAUDE_MODELS`]; the OpenAI model API also lists many non-coding
-/// models (audio, image, embeddings) that codex can't use — those are omitted.
+/// models (audio, image, embeddings) that codex can't use; those are omitted.
 //
-// To refresh (needs an OPENAI_API_KEY), keep only the coding models — the
+// To refresh (needs an OPENAI_API_KEY), keep only the coding models, i.e. the
 // `*-codex` ids (and general `gpt-*`/`o*` reasoning models if desired):
 //
 //   curl -s https://api.openai.com/v1/models \
