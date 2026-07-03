@@ -28,11 +28,21 @@ chart was never measuring what you thought it was.
 ## Install
 
 ```sh
-cargo build --release
+brew install ubi
+ubi --project lra/brulr --in ~/.local/bin
 ```
 
-The binary lands in `target/release/brulr`. You also need whichever harness you
-burn against (`claude` and/or `codex`) installed and logged in.
+The first line installs [ubi](https://github.com/houseabsolute/ubi), a small
+tool that downloads prebuilt binaries from GitHub releases. The second line
+fetches the latest brülr release, picks the build matching your OS and CPU, and
+drops the `brulr` binary into `~/.local/bin`. Make sure that directory is on
+your `PATH`.
+
+No Rust toolchain needed. If you do want to build from source, `cargo build
+--release` puts the binary at `target/release/brulr`.
+
+You still need whichever harness you burn against (`claude` and/or `codex`)
+installed and logged in.
 
 ## Usage
 
