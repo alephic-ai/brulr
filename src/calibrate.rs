@@ -1,7 +1,7 @@
 //! Calibration: learn each backend's per-call overhead and tokens-per-byte.
 
 use crate::backend::Burner;
-use crate::rng::{build_prompt, Rng};
+use crate::rng::{build_probe, Rng};
 use crate::usage::{accumulate, Report};
 
 /// Linear token model learned at calibration: fresh tokens burned by one call
@@ -14,7 +14,9 @@ pub struct Calibration {
 
 /// Hard cap on padding per call. It bounds request size and, crucially, keeps
 /// a degenerate (near-zero) slope from asking for a usize::MAX-sized string.
-pub const MAX_PAD_BYTES: usize = 1_000_000;
+/// Must stay well under argv limits (macOS ARG_MAX is 1 MiB for argv+env
+/// combined; a 1 MiB prompt makes `codex exec` fall back to stdin and die).
+pub const MAX_PAD_BYTES: usize = 200_000;
 
 impl Calibration {
     /// Pad bytes needed to burn about `tokens` fresh tokens in one call.
@@ -44,12 +46,12 @@ pub fn calibrate(
     const PROBE_BYTES: usize = 20_000;
     let mut report = Report::default();
 
-    let empty = build_prompt(rng, 0);
+    let empty = build_probe(rng, 0);
     let u0 = burner.run(&empty)?;
     accumulate(&mut report, &u0);
     on_progress(&report);
 
-    let sized = build_prompt(rng, PROBE_BYTES);
+    let sized = build_probe(rng, PROBE_BYTES);
     let u1 = burner.run(&sized)?;
     accumulate(&mut report, &u1);
     on_progress(&report);

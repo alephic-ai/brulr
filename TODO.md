@@ -16,9 +16,10 @@
 
 - [ ] **Task-based entropy variation.** The random-hex padding is done,
       front-loaded so prefix caching dies on the first divergent token, and the
-      cache-counter check already warns when entropy is absorbed. Once real task
-      prompts exist, also shuffle task order and vary the output format (prose,
-      table, bullets, Q&A) and framing.
+      cache-counter check already warns when entropy is absorbed. Rotating
+      rng-parameterized tasks (bounded ~0.5-2k output tokens, single-turn to
+      keep tool-use cache re-reads out) now exist in `rng::build_task`. Still
+      to do: vary the output format (prose, table, bullets, Q&A) and framing.
 - [ ] **Thinking-token amplification.** Set `MAX_THINKING_TOKENS=128000` (on the
       claude command, not before a pipe) and seed problems that demand "show
       every arithmetic operation." A message-derived deterministic seed gives
@@ -29,6 +30,7 @@
       cofactor determinant recursion, 30-digit long division, Floyd-Warshall
       printing all 7 matrices, Gaussian elimination in exact fractions.
       Generate parameterized instances in Rust; don't ship a static bank.
+      (A first slice exists: the four simple tasks in `rng::build_task`.)
 - [ ] **Output-token maximization mode.** Demand 2000-word-plus responses, and
       full-file reads into subagent context (input burn) with verbose analysis
       (output burn). Ship code task templates (architecture forensics,
