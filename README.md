@@ -32,7 +32,7 @@ chart was never measuring what you thought it was.
 
 ```sh
 brew install ubi
-ubi --project lra/brulr --in ~/.local/bin
+ubi --project alephic-ai/brulr --in ~/.local/bin
 ```
 
 The first line installs [ubi](https://github.com/houseabsolute/ubi), a small
