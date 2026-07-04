@@ -78,9 +78,14 @@ Run `brulr burn --help` for all flags.
 
 Every call pays a fixed per-call overhead and then carries a block of random hex
 padding. The padding sits at the front of the prompt so prefix caching can't
-absorb it. At startup brülr makes two probe calls to measure the overhead and
-the tokens-per-byte rate, then sizes each call's padding to reach the target. It
-trims the last call so the run doesn't overshoot.
+absorb it. Each prompt ends with a rotating, randomly parameterized busywork
+task (integers in English words, multiplication tables, hex conversions, digit
+sums) sized to burn roughly 500–2000 output tokens per call — output is priced
+several times higher than input, so the reply burns too. At startup brülr makes
+two probe calls to measure the overhead and the tokens-per-byte rate, then sizes
+each call's padding to reach the target. It trims the last call so the run
+doesn't overshoot. The probes ask for a minimal fixed reply instead of a task,
+so output variance can't skew the measurement.
 
 The end-of-run report gives two token totals. Raw tokens count everything at
 face value, which is the number you'd quote on a leaderboard. Cost-weighted
