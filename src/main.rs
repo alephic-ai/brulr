@@ -195,7 +195,9 @@ fn main() {
                     println!("raw tokens:         {}  (face value, leaderboard number)", r.raw_tokens());
                     println!("cost-weighted:      {:.0}  (cache reads at 0.1x, real burn)", r.cost_weighted_tokens());
                     println!("cost:               ${:.4}  (API-equivalent)", r.cost_usd);
-                    if r.cache_hit_ratio() > 0.1 {
+                    // ponytail: 0.25 clears the ~10% floor from codex's cached
+                    // fixed preamble; real padding absorption blows way past it.
+                    if r.cache_hit_ratio() > 0.25 {
                         eprintln!(
                             "warning: {:.0}% of input served from cache; padding is being cached, burn is not real",
                             r.cache_hit_ratio() * 100.0
