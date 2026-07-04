@@ -18,8 +18,9 @@ spend as inactive or as a coaching opportunity.
 But burning tokens is not the same as doing work. Solve something in one good
 prompt, use a cheaper model, or just not need the thing this week, and you look
 identical to someone who did nothing. So the metric quietly rewards waste, and
-the person being careful with it comes off worse than the person spraying tokens
-at everything.
+the person being careful with it comes off worse than the
+[Token Maximalist](https://www.alephic.com/store/token-maximalist-oversized-faded-t-shirt-1)
+spraying tokens at everything.
 
 brülr is what happens if you take that metric at its word. If the score is only
 consumption, you can win it without doing anything, so brülr does exactly that:
