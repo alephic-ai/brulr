@@ -2,6 +2,8 @@
 
 A CLI for burning AI tokens on purpose.
 
+![brülr feeding tokens into a furnace while a leaderboard applauds](assets/brulr-satire-v3.png)
+
 brülr runs an agent harness (`claude` or `codex`) in a loop and pads every call
 with uncacheable random bytes. It burns toward whatever you give it: a token
 count, a duration, a wall-clock time, or a dollar amount.
