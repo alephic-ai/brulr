@@ -2,6 +2,10 @@ name: Markdown
 
 on: [push, pull_request]
 
+# Least privilege for checkout + rumdl (code scanning: missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   rumdl:
     runs-on: ubuntu-latest
