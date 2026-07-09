@@ -271,7 +271,12 @@ pub fn parse_grok_usage_from_log(log_path: &Path, session_id: &str) -> Result<Us
                 // ponytail: a line carrying another session's sid means we've
                 // walked past ours (sessions don't interleave while brulr runs
                 // one grok at a time); drop this early-stop if that changes.
-                if seen && line.contains("\"sid\":\"") {
+                // Parsing here is cheap: it only runs after `seen` and breaks
+                // on the first sid-bearing line, regardless of formatting.
+                if seen
+                    && serde_json::from_str::<serde_json::Value>(&line)
+                        .is_ok_and(|v| v["sid"].is_string())
+                {
                     break 'chunks;
                 }
                 continue;
