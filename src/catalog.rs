@@ -1,4 +1,4 @@
-//! Static snapshots of harness models, effort levels, and codex prices.
+//! Static snapshots of harness models, effort levels, and codex/grok prices.
 
 /// Known models for the `claude` harness: a static snapshot fetched
 /// 2026-07-03 from the provider model API. `--model` is a free pass-through,
@@ -55,6 +55,21 @@ pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 // To update: see codex's `model_reasoning_effort` config documentation.
 pub const CODEX_EFFORTS: &[&str] = &["minimal", "low", "medium", "high"];
 
+/// Known models for the `grok` harness (xAI Grok Build CLI). Snapshot from
+/// `grok models` on 2026-07-09. `--model` is a free pass-through.
+//
+// To refresh: `grok models` (requires login).
+pub const GROK_MODELS: &[&str] = &["grok-4.5", "grok-composer-2.5-fast"];
+
+/// Reasoning-effort levels accepted by the `grok` harness for the default
+/// model (`grok-4.5`). Empirically verified 2026-07-09 on grok 0.2.93:
+/// `none` is a CLI-parseable value but the API rejects it for grok-4.5;
+/// `minimal`/`low`/`medium`/`high`/`xhigh`/`max` all work (`max` aliases
+/// `xhigh`). `grok-composer-2.5-fast` ignores effort entirely.
+// To update: `grok -p … --effort <level>` against the default model, and
+// `~/.grok/docs/user-guide/14-headless-mode.md` for the CLI-parseable set.
+pub const GROK_EFFORTS: &[&str] = &["minimal", "low", "medium", "high", "xhigh", "max"];
+
 /// Codex price snapshot: (model, input, cached-input, output) in USD per 1M
 /// tokens. codex does not report cost, so dollar output is derived from this.
 //
@@ -69,4 +84,19 @@ pub const CODEX_PRICES: &[(&str, f64, f64, f64)] = &[
     ("gpt-5.1-codex-mini", 0.25, 0.025, 2.0),
     ("gpt-5.1-codex", 1.25, 0.125, 10.0),
     ("gpt-5-codex", 1.25, 0.125, 10.0), // legacy: inferred, not listed
+];
+
+/// Grok price snapshot: (model, input, cached-input, output) in USD per 1M
+/// tokens. grok does not report cost in headless JSON, so dollars are derived.
+//
+// grok-4.5: docs.x.ai pricing (verified 2026-07-09) — $2 / $0.50 / $6.
+// grok-composer-2.5-fast: Cursor Composer 2.5 Fast list rates ($3 / $15);
+// xAI does not publish Composer rates (subscription-bundled). Cached input
+// is unpublished for Composer — 0.1× input ($0.30), OpenAI-style convention.
+// First entry is the assumed default when `--model` is omitted or unknown.
+//
+// ponytail: Composer cache rate is guessed; refresh when xAI/Cursor publish it.
+pub const GROK_PRICES: &[(&str, f64, f64, f64)] = &[
+    ("grok-4.5", 2.0, 0.50, 6.0),
+    ("grok-composer-2.5-fast", 3.0, 0.30, 15.0),
 ];

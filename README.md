@@ -4,9 +4,9 @@ A CLI for burning AI tokens on purpose.
 
 ![brülr feeding tokens into a furnace while a leaderboard applauds](assets/brulr-satire-v3.png)
 
-brülr runs an agent harness (`claude` or `codex`) in a loop and pads every call
-with uncacheable random bytes. It burns toward whatever you give it: a token
-count, a duration, a wall-clock time, or a dollar amount.
+brülr runs an agent harness (`claude`, `codex`, or `grok`) in a loop and pads
+every call with uncacheable random bytes. It burns toward whatever you give it:
+a token count, a duration, a wall-clock time, or a dollar amount.
 
 ## Why
 
@@ -44,8 +44,8 @@ your `PATH`.
 No Rust toolchain needed. If you do want to build from source, `cargo build
 --release` puts the binary at `target/release/brulr`.
 
-You still need whichever harness you burn against (`claude` and/or `codex`)
-installed and logged in.
+You still need whichever harness you burn against (`claude`, `codex`, and/or
+`grok`) installed and logged in.
 
 ## Usage
 
@@ -57,6 +57,7 @@ brulr burn 5usd            # burn until $5 of API-equivalent cost
 brulr burn --until 07:00   # burn until the next local 07:00
 
 brulr burn --harness codex # burn via codex instead of claude
+brulr burn --harness grok  # burn via the xAI Grok Build CLI
 brulr burn --model claude-opus-4-8 --effort high
 brulr models               # list known models per harness
 ```
@@ -67,11 +68,13 @@ Run `brulr burn --help` for all flags.
 
 - `<target>`: what to burn toward. A token count (`100000`), a duration
   (`90s`/`45m`/`2h`), or a dollar amount (`5usd`/`0.25usd`). Defaults to `100000`.
-- `--harness <claude|codex>`: which agent CLI to burn against. Defaults to `claude`.
+- `--harness <claude|codex|grok>`: which agent CLI to burn against. Defaults to
+  `claude`.
 - `--model <id>`: model to pass through. Defaults to the harness's own default.
   Run `brulr models` for known ids; any id the harness accepts still works.
 - `--effort <level>`: reasoning effort. claude takes `low|medium|high|xhigh|max`,
-  codex takes `minimal|low|medium|high`. Defaults to the harness/model default.
+  codex takes `minimal|low|medium|high`, grok takes
+  `minimal|low|medium|high|xhigh|max`. Defaults to the harness/model default.
 - `--until <HH:MM>`: burn until the next occurrence of a local wall-clock time.
 
 ## How it works
@@ -97,10 +100,13 @@ prints a warning: the padding is being cached and the burn isn't real.
 
 The report also prints a dollar figure, and `burn 5usd` burns until it hits a
 target spend. `claude` reports its own cost, so those numbers are exact. `codex`
-doesn't, so its cost comes from a hardcoded price snapshot (`CODEX_PRICES` in
-`src/lib.rs`); check it against current pricing before you trust the codex
-dollars. On a subscription these are API-equivalent dollars, not charges against
-your plan. On a metered API key it would be real money.
+and `grok` don't, so their cost comes from hardcoded price snapshots
+(`CODEX_PRICES` / `GROK_PRICES` in `src/catalog.rs`); check them against current
+pricing before you trust those dollars. Grok also omits token counts from
+headless JSON, so brülr recovers usage from the Grok Build log
+(`~/.grok/logs/unified.jsonl`). On a subscription these are API-equivalent
+dollars, not charges against your plan. On a metered API key it would be real
+money.
 
 ## Library
 

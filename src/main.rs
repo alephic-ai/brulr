@@ -4,8 +4,8 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use brulr::{
-    burn, calibrate, Burner, ClaudeBurner, CodexBurner, Rng, CLAUDE_EFFORTS, CLAUDE_MODELS,
-    CODEX_EFFORTS, CODEX_MODELS, PROBES,
+    burn, calibrate, Burner, ClaudeBurner, CodexBurner, GrokBurner, Rng, CLAUDE_EFFORTS,
+    CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS, GROK_EFFORTS, GROK_MODELS, PROBES,
 };
 use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -15,6 +15,7 @@ use target::{fmt_dur, parse_hhmm, parse_target, secs_until, Goal};
 enum Harness {
     Claude,
     Codex,
+    Grok,
 }
 
 #[derive(Parser)]
@@ -43,7 +44,8 @@ enum Cmd {
         #[arg(long)]
         model: Option<String>,
         /// Reasoning effort (claude: low/medium/high/xhigh/max; codex:
-        /// minimal/low/medium/high). Default: the harness/model default.
+        /// minimal/low/medium/high; grok: minimal/low/medium/high/xhigh/max).
+        /// Default: the harness/model default.
         #[arg(long)]
         effort: Option<String>,
     },
@@ -83,10 +85,12 @@ fn main() {
             let harness_name = match harness {
                 Harness::Claude => "claude",
                 Harness::Codex => "codex",
+                Harness::Grok => "grok",
             };
             let efforts = match harness {
                 Harness::Claude => CLAUDE_EFFORTS,
                 Harness::Codex => CODEX_EFFORTS,
+                Harness::Grok => GROK_EFFORTS,
             };
             if let Some(e) = &effort {
                 if !efforts.contains(&e.as_str()) {
@@ -110,6 +114,7 @@ fn main() {
             let mut burner: Box<dyn Burner> = match harness {
                 Harness::Claude => Box::new(ClaudeBurner { model, effort }),
                 Harness::Codex => Box::new(CodexBurner { model, effort }),
+                Harness::Grok => Box::new(GrokBurner { model, effort }),
             };
 
             eprint!("\r  calibrating… 0/{PROBES} probes");
@@ -220,9 +225,11 @@ fn main() {
             match harness {
                 Some(Harness::Claude) => list("claude", CLAUDE_MODELS),
                 Some(Harness::Codex) => list("codex", CODEX_MODELS),
+                Some(Harness::Grok) => list("grok", GROK_MODELS),
                 None => {
                     list("claude", CLAUDE_MODELS);
                     list("codex", CODEX_MODELS);
+                    list("grok", GROK_MODELS);
                 }
             }
         }
