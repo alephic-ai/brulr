@@ -71,10 +71,13 @@ Run `brulr burn --help` for all flags.
 - `--harness <claude|codex|grok>`: which agent CLI to burn against. Defaults to
   `claude`.
 - `--model <id>`: model to pass through. Defaults to the harness's own default.
-  Run `brulr models` for known ids; any id the harness accepts still works.
-- `--effort <level>`: reasoning effort. claude takes `low|medium|high|xhigh|max`,
-  codex takes `minimal|low|medium|high`, grok takes
-  `minimal|low|medium|high|xhigh|max`. Defaults to the harness/model default.
+  Run `brulr models` for known ids. Known models must match `--harness` (e.g.
+  `grok-4.5` needs `--harness grok`); unknown ids still pass through.
+- `--effort <level>`: reasoning effort for the selected model. Valid levels
+  depend on harness and model (claude: `low|medium|high|xhigh|max`; codex:
+  `minimal|low|medium|high`; grok-4.5:
+  `minimal|low|medium|high|xhigh|max`). Some models reject effort entirely
+  (e.g. `grok-composer-2.5-fast`). Defaults to the harness/model default.
 - `--until <HH:MM>`: burn until the next occurrence of a local wall-clock time.
 
 ## How it works

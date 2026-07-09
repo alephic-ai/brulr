@@ -22,8 +22,9 @@ pub use backend::{
 pub use burn::burn;
 pub use calibrate::{calibrate, Calibration, MAX_PAD_BYTES, PROBES};
 pub use catalog::{
+    efforts_for, harness_for_model, harness_info, models_for_harness, validate_selection,
     CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS, CODEX_PRICES, GROK_EFFORTS,
-    GROK_MODELS, GROK_PRICES,
+    GROK_MODELS, GROK_PRICES, HARNESSES, HarnessInfo, Model,
 };
 pub use rng::{build_prompt, Rng};
 pub use usage::{Report, Usage, CACHE_READ_WEIGHT};
