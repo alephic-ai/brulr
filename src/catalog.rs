@@ -115,11 +115,11 @@ pub fn models_for_harness(harness: &str) -> Option<&'static [Model]> {
 pub fn efforts_for(harness: &str, model: Option<&str>) -> Result<&'static [&'static str], String> {
     let h = harness_info(harness)
         .ok_or_else(|| format!("unknown harness '{harness}'"))?;
-    if let Some(id) = model {
-        if let Some(m) = h.models.iter().find(|m| m.id == id) {
-            return Ok(m.efforts);
-        }
-        // Unknown model on this harness: use harness default efforts.
+    // Unknown model on this harness: fall through to harness default efforts.
+    if let Some(id) = model
+        && let Some(m) = h.models.iter().find(|m| m.id == id)
+    {
+        return Ok(m.efforts);
     }
     h.models
         .first()
@@ -140,14 +140,13 @@ pub fn validate_selection(
     if harness_info(harness).is_none() {
         return Err(format!("unknown harness '{harness}'"));
     }
-    if let Some(id) = model {
-        if let Some(owner) = harness_for_model(id) {
-            if owner != harness {
-                return Err(format!(
-                    "model '{id}' is for harness '{owner}', not '{harness}'; try --harness {owner}"
-                ));
-            }
-        }
+    if let Some(id) = model
+        && let Some(owner) = harness_for_model(id)
+        && owner != harness
+    {
+        return Err(format!(
+            "model '{id}' is for harness '{owner}', not '{harness}'; try --harness {owner}"
+        ));
     }
     let efforts = efforts_for(harness, model)?;
     if let Some(e) = effort {
