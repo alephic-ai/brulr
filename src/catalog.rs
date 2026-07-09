@@ -48,7 +48,7 @@ pub struct HarnessInfo {
 //     -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
 //     | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
 //
-// Codex models: coding ids only from OpenAI model API (needs OPENAI_API_KEY).
+// Codex models: Codex CLI model picker (2026-07-10).
 // Grok models: `grok models` (requires login); 2026-07-09.
 pub const HARNESSES: &[HarnessInfo] = &[
     HarnessInfo {
@@ -68,13 +68,15 @@ pub const HARNESSES: &[HarnessInfo] = &[
     },
     HarnessInfo {
         name: "codex",
+        // Codex model picker order (2026-07-10); first entry is the default.
         models: &[
-            Model { id: "gpt-5.3-codex", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.2-codex", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.1-codex-max", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.1-codex-mini", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.1-codex", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5-codex", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.6-sol", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.5", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.6-terra", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.6-luna", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.4", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.4-mini", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.3-codex-spark", efforts: CODEX_EFFORTS },
         ],
     },
     HarnessInfo {
@@ -173,17 +175,27 @@ pub fn validate_selection(
 /// Codex price snapshot: (model, input, cached-input, output) in USD per 1M
 /// tokens. codex does not report cost, so dollar output is derived from this.
 //
-// Verified 2026-07-04 against OpenAI's pricing page and OpenRouter. gpt-5-codex
-// has no current listing (legacy) and is assumed to match the 5.1-codex tier.
-// To refresh, see https://developers.openai.com/api/docs/pricing. First entry
-// is the assumed default when `--model` is omitted or unknown.
+// Verified 2026-07-10 against https://developers.openai.com/api/docs/pricing
+// (short-context standard rates). Cached input is the published rate (typically
+// 0.1× input). gpt-5.3-codex-spark is research-preview and not listed on the
+// pricing page; rate is inferred from gpt-5.3-codex. Legacy codex ids kept so
+// pass-through burns still price correctly. First entry is the assumed default
+// when `--model` is omitted or unknown.
 pub const CODEX_PRICES: &[(&str, f64, f64, f64)] = &[
+    ("gpt-5.6-sol", 5.0, 0.50, 30.0),
+    ("gpt-5.5", 5.0, 0.50, 30.0),
+    ("gpt-5.6-terra", 2.50, 0.25, 15.0),
+    ("gpt-5.6-luna", 1.0, 0.10, 6.0),
+    ("gpt-5.4", 2.50, 0.25, 15.0),
+    ("gpt-5.4-mini", 0.75, 0.075, 4.50),
+    ("gpt-5.3-codex-spark", 1.75, 0.175, 14.0), // research preview: inferred
+    // legacy ids (still pass through if the harness accepts them)
     ("gpt-5.3-codex", 1.75, 0.175, 14.0),
     ("gpt-5.2-codex", 1.75, 0.175, 14.0),
     ("gpt-5.1-codex-max", 1.25, 0.125, 10.0),
     ("gpt-5.1-codex-mini", 0.25, 0.025, 2.0),
     ("gpt-5.1-codex", 1.25, 0.125, 10.0),
-    ("gpt-5-codex", 1.25, 0.125, 10.0), // legacy: inferred, not listed
+    ("gpt-5-codex", 1.25, 0.125, 10.0),
 ];
 
 /// Grok price snapshot: (model, input, cached-input, output) in USD per 1M
@@ -209,7 +221,7 @@ mod tests {
     fn harness_for_model_resolves_owners() {
         assert_eq!(harness_for_model("grok-4.5"), Some("grok"));
         assert_eq!(harness_for_model("claude-opus-4-8"), Some("claude"));
-        assert_eq!(harness_for_model("gpt-5.3-codex"), Some("codex"));
+        assert_eq!(harness_for_model("gpt-5.6-sol"), Some("codex"));
         assert_eq!(harness_for_model("totally-unknown"), None);
     }
 
