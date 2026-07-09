@@ -2,6 +2,10 @@ name: CI
 
 on: [push, pull_request]
 
+# Least privilege for checkout + cargo (code scanning: missing-workflow-permissions).
+permissions:
+  contents: read
+
 jobs:
   test:
     strategy:
