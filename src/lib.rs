@@ -15,9 +15,15 @@ mod catalog;
 mod rng;
 mod usage;
 
-pub use backend::{codex_cost, parse_codex_usage, parse_usage, Burner, ClaudeBurner, CodexBurner};
+pub use backend::{
+    codex_cost, grok_cost, parse_codex_usage, parse_grok_session_id, parse_grok_usage_from_log,
+    parse_usage, Burner, ClaudeBurner, CodexBurner, GrokBurner,
+};
 pub use burn::burn;
 pub use calibrate::{calibrate, Calibration, MAX_PAD_BYTES, PROBES};
-pub use catalog::{CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS, CODEX_PRICES};
+pub use catalog::{
+    CLAUDE_EFFORTS, CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS, CODEX_PRICES, GROK_EFFORTS,
+    GROK_MODELS, GROK_PRICES,
+};
 pub use rng::{build_prompt, Rng};
 pub use usage::{Report, Usage, CACHE_READ_WEIGHT};

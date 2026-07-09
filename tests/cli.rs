@@ -29,3 +29,11 @@ fn missing_codex_harness_errors() {
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(stderr.contains("can't find the `codex` harness"), "stderr was: {stderr}");
 }
+
+#[test]
+fn missing_grok_harness_errors() {
+    let out = burn_with_missing_harness("grok");
+    assert!(!out.status.success(), "expected non-zero exit");
+    let stderr = String::from_utf8_lossy(&out.stderr);
+    assert!(stderr.contains("can't find the `grok` harness"), "stderr was: {stderr}");
+}
