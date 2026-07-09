@@ -168,17 +168,20 @@ pub struct GrokBurner {
 impl Burner for GrokBurner {
     fn run(&mut self, prompt: &str) -> Result<Usage, String> {
         let mut cmd = Command::new("grok");
-        // ponytail: flags are version-sensitive (grok 0.2.x). Empty tools +
-        // max-turns 1 keeps burns single-turn and off the filesystem.
+        // ponytail: flags are version-sensitive (grok 0.2.x).
+        // `--tools ""` is a no-op here (still ~24 tools; empty allowlist is
+        // ignored, and stripping required tools fails agent build).
+        // max-turns must be >1: if the model calls a tool, the final answer
+        // needs another agentic turn — with max-turns 1 grok exits
+        // "max turns reached". Prefer single-turn burns (tool re-reads pad
+        // from cache); 5 is headroom when the model ignores the no-tools ask.
         cmd.args([
             "-p",
             prompt,
             "--output-format",
             "json",
-            "--tools",
-            "",
             "--max-turns",
-            "1",
+            "5",
             "--no-subagents",
             "--no-memory",
             "--disable-web-search",
