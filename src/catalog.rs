@@ -87,34 +87,6 @@ pub const HARNESSES: &[HarnessInfo] = &[
     },
 ];
 
-/// Known model ids for the `claude` harness (discovery snapshot).
-// Mirrors `HARNESSES[0].models` ids; HARNESSES is authoritative for validation.
-pub const CLAUDE_MODELS: &[&str] = &[
-    "claude-sonnet-5",
-    "claude-fable-5",
-    "claude-opus-4-8",
-    "claude-opus-4-7",
-    "claude-sonnet-4-6",
-    "claude-opus-4-6",
-    "claude-opus-4-5-20251101",
-    "claude-haiku-4-5-20251001",
-    "claude-sonnet-4-5-20250929",
-    "claude-opus-4-1-20250805",
-];
-
-/// Known model ids for the `codex` harness (discovery snapshot).
-pub const CODEX_MODELS: &[&str] = &[
-    "gpt-5.3-codex",
-    "gpt-5.2-codex",
-    "gpt-5.1-codex-max",
-    "gpt-5.1-codex-mini",
-    "gpt-5.1-codex",
-    "gpt-5-codex",
-];
-
-/// Known model ids for the `grok` harness (discovery snapshot).
-pub const GROK_MODELS: &[&str] = &["grok-4.5", "grok-composer-2.5-fast"];
-
 /// Look up a harness entry by name (`claude` / `codex` / `grok`).
 pub fn harness_info(name: &str) -> Option<&'static HarnessInfo> {
     HARNESSES.iter().find(|h| h.name == name)
@@ -143,11 +115,11 @@ pub fn models_for_harness(harness: &str) -> Option<&'static [Model]> {
 pub fn efforts_for(harness: &str, model: Option<&str>) -> Result<&'static [&'static str], String> {
     let h = harness_info(harness)
         .ok_or_else(|| format!("unknown harness '{harness}'"))?;
-    if let Some(id) = model {
-        if let Some(m) = h.models.iter().find(|m| m.id == id) {
-            return Ok(m.efforts);
-        }
-        // Unknown model on this harness: use harness default efforts.
+    // Unknown model on this harness: fall through to harness default efforts.
+    if let Some(id) = model
+        && let Some(m) = h.models.iter().find(|m| m.id == id)
+    {
+        return Ok(m.efforts);
     }
     h.models
         .first()
@@ -168,14 +140,13 @@ pub fn validate_selection(
     if harness_info(harness).is_none() {
         return Err(format!("unknown harness '{harness}'"));
     }
-    if let Some(id) = model {
-        if let Some(owner) = harness_for_model(id) {
-            if owner != harness {
-                return Err(format!(
-                    "model '{id}' is for harness '{owner}', not '{harness}'; try --harness {owner}"
-                ));
-            }
-        }
+    if let Some(id) = model
+        && let Some(owner) = harness_for_model(id)
+        && owner != harness
+    {
+        return Err(format!(
+            "model '{id}' is for harness '{owner}', not '{harness}'; try --harness {owner}"
+        ));
     }
     let efforts = efforts_for(harness, model)?;
     if let Some(e) = effort {
@@ -233,22 +204,6 @@ pub const GROK_PRICES: &[(&str, f64, f64, f64)] = &[
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    #[test]
-    fn model_lists_match_harness_graph() {
-        for (name, listed) in [
-            ("claude", CLAUDE_MODELS),
-            ("codex", CODEX_MODELS),
-            ("grok", GROK_MODELS),
-        ] {
-            let graph: Vec<_> = models_for_harness(name)
-                .unwrap()
-                .iter()
-                .map(|m| m.id)
-                .collect();
-            assert_eq!(graph, listed, "MODELS slice drifted from HARNESSES for {name}");
-        }
-    }
 
     #[test]
     fn harness_for_model_resolves_owners() {

@@ -5,7 +5,7 @@ use std::time::{Duration, Instant};
 
 use brulr::{
     burn, calibrate, validate_selection, Burner, ClaudeBurner, CodexBurner, GrokBurner, Rng,
-    CLAUDE_MODELS, CODEX_MODELS, GROK_MODELS, PROBES,
+    HARNESSES, PROBES,
 };
 use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -16,6 +16,16 @@ enum Harness {
     Claude,
     Codex,
     Grok,
+}
+
+impl Harness {
+    fn name(self) -> &'static str {
+        match self {
+            Harness::Claude => "claude",
+            Harness::Codex => "codex",
+            Harness::Grok => "grok",
+        }
+    }
 }
 
 #[derive(Parser)]
@@ -82,11 +92,7 @@ fn main() {
                 Goal::Dollars(u) => (u64::MAX, None, Some(u)),
             };
             let mut rng = Rng::from_entropy();
-            let harness_name = match harness {
-                Harness::Claude => "claude",
-                Harness::Codex => "codex",
-                Harness::Grok => "grok",
-            };
+            let harness_name = harness.name();
             if let Err(e) =
                 validate_selection(harness_name, model.as_deref(), effort.as_deref())
             {
@@ -208,20 +214,11 @@ fn main() {
             }
         }
         Cmd::Models { harness } => {
-            let list = |name: &str, models: &[&str]| {
-                println!("{name}:");
-                for m in models {
-                    println!("  {m}");
-                }
-            };
-            match harness {
-                Some(Harness::Claude) => list("claude", CLAUDE_MODELS),
-                Some(Harness::Codex) => list("codex", CODEX_MODELS),
-                Some(Harness::Grok) => list("grok", GROK_MODELS),
-                None => {
-                    list("claude", CLAUDE_MODELS);
-                    list("codex", CODEX_MODELS);
-                    list("grok", GROK_MODELS);
+            let name = harness.map(Harness::name);
+            for h in HARNESSES.iter().filter(|h| name.is_none_or(|n| n == h.name)) {
+                println!("{}:", h.name);
+                for m in h.models {
+                    println!("  {}", m.id);
                 }
             }
         }
