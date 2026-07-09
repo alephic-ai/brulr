@@ -4,8 +4,8 @@ use std::io::Write;
 use std::time::{Duration, Instant};
 
 use brulr::{
-    burn, calibrate, Burner, ClaudeBurner, CodexBurner, GrokBurner, Rng, CLAUDE_EFFORTS,
-    CLAUDE_MODELS, CODEX_EFFORTS, CODEX_MODELS, GROK_EFFORTS, GROK_MODELS, PROBES,
+    burn, calibrate, validate_selection, Burner, ClaudeBurner, CodexBurner, GrokBurner, Rng,
+    CLAUDE_MODELS, CODEX_MODELS, GROK_MODELS, PROBES,
 };
 use chrono::{Local, Timelike};
 use clap::{Parser, Subcommand, ValueEnum};
@@ -40,11 +40,11 @@ enum Cmd {
         #[arg(long, value_enum, default_value_t = Harness::Claude)]
         harness: Harness,
         /// Model to pass to the harness (see `brulr models`; default is the
-        /// harness's own default).
+        /// harness's own default). Known models must match --harness.
         #[arg(long)]
         model: Option<String>,
-        /// Reasoning effort (claude: low/medium/high/xhigh/max; codex:
-        /// minimal/low/medium/high; grok: minimal/low/medium/high/xhigh/max).
+        /// Reasoning effort for the selected model (see harness docs). Rejected
+        /// when the model does not support effort (e.g. grok-composer-2.5-fast).
         /// Default: the harness/model default.
         #[arg(long)]
         effort: Option<String>,
@@ -87,19 +87,11 @@ fn main() {
                 Harness::Codex => "codex",
                 Harness::Grok => "grok",
             };
-            let efforts = match harness {
-                Harness::Claude => CLAUDE_EFFORTS,
-                Harness::Codex => CODEX_EFFORTS,
-                Harness::Grok => GROK_EFFORTS,
-            };
-            if let Some(e) = &effort {
-                if !efforts.contains(&e.as_str()) {
-                    eprintln!(
-                        "error: invalid effort '{e}' for {harness_name}; accepted: {}",
-                        efforts.join(", "),
-                    );
-                    std::process::exit(2);
-                }
+            if let Err(e) =
+                validate_selection(harness_name, model.as_deref(), effort.as_deref())
+            {
+                eprintln!("error: {e}");
+                std::process::exit(2);
             }
             let goal_label = match (duration, target_usd) {
                 (Some(d), _) => fmt_dur(d),
