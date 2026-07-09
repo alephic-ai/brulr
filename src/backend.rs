@@ -469,15 +469,18 @@ mod tests {
             )
             .unwrap();
         }
-        writeln!(
-            f,
-            r#"{{"sid":"{sid}","msg":"shell.turn.inference_done","ctx":{{"prompt_tokens":1000,"cached_prompt_tokens":100,"completion_tokens":10,"reasoning_tokens":5}}}}"#
-        )
-        .unwrap();
+        // Two target lines: proves the early-stop doesn't fire mid-summation.
+        for (p, c, o, r) in [(1000u64, 100, 10, 5), (2000, 500, 20, 15)] {
+            writeln!(
+                f,
+                r#"{{"sid":"{sid}","msg":"shell.turn.inference_done","ctx":{{"prompt_tokens":{p},"cached_prompt_tokens":{c},"completion_tokens":{o},"reasoning_tokens":{r}}}}}"#
+            )
+            .unwrap();
+        }
         let u = parse_grok_usage_from_log(&path, sid).unwrap();
-        assert_eq!(u.input_tokens, 1000 - 100); // old sessions not counted
-        assert_eq!(u.cache_read_input_tokens, 100);
-        assert_eq!(u.output_tokens, 10 + 5);
+        assert_eq!(u.input_tokens, (1000 - 100) + (2000 - 500)); // old sessions not counted
+        assert_eq!(u.cache_read_input_tokens, 100 + 500);
+        assert_eq!(u.output_tokens, 10 + 5 + 20 + 15);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
