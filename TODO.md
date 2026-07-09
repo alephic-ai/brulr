@@ -134,3 +134,10 @@
       (a dry run that burns nothing).
 - [ ] **Kill switch.** SIGINT touches the stop file and drains; `brulr stop
       --now` hard-kills panes. Keep a state file so a crash never orphans agents.
+
+## Clients
+
+- [ ] **Desktop version.** Ship a desktop app (tray/menubar or small window)
+      that runs burns without the terminal: pick harness/model/target, show
+      live progress and the end-of-run report, reuse the library `Burner` /
+      `calibrate` / `burn` loop rather than reimplementing the engine.
