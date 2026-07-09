@@ -2,7 +2,7 @@
 //! plus the usage/cost parsing each one needs.
 
 use std::fs::File;
-use std::io::{BufRead, BufReader};
+use std::io::{Read, Seek, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::process::Command;
 
@@ -226,42 +226,76 @@ pub fn parse_grok_session_id(stdout: &[u8]) -> Result<String, String> {
 /// Sum token usage from grok's `shell.turn.inference_done` log lines for one
 /// `session_id`. Grok reports `prompt_tokens` inclusive of
 /// `cached_prompt_tokens`; reasoning tokens count as output.
+///
+/// The log is shared and append-only, so the session just burned sits at the
+/// tail: read the file backwards in chunks and stop once we walk past its
+/// lines, instead of re-scanning a file that grows every burn-loop iteration.
 //
 // ponytail: scrapes `$GROK_HOME/logs/unified.jsonl` because headless JSON has
 // no usage fields (grok 0.2.x). Message name and field layout are
 // version-sensitive — fail loudly if nothing matches rather than under-count.
 pub fn parse_grok_usage_from_log(log_path: &Path, session_id: &str) -> Result<Usage, String> {
-    let file = File::open(log_path).map_err(|e| {
+    let mut file = File::open(log_path).map_err(|e| {
         format!(
             "can't read grok log {}: {e} (token usage lives there; is grok writing logs?)",
             log_path.display()
         )
     })?;
+    let read_err = |e: std::io::Error| format!("read grok log: {e}");
     let mut prompt = 0u64;
     let mut cached = 0u64;
     let mut completion = 0u64;
     let mut reasoning = 0u64;
     let mut seen = false;
-    for line in BufReader::new(file).lines() {
-        let line = line.map_err(|e| format!("read grok log: {e}"))?;
-        if !line.contains(session_id) || !line.contains("inference_done") {
-            continue;
-        }
-        let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+    const CHUNK: u64 = 64 * 1024;
+    let mut pos = file.seek(SeekFrom::End(0)).map_err(read_err)?;
+    let mut carry: Vec<u8> = Vec::new(); // partial first line of the window below
+    'chunks: while pos > 0 {
+        let take = pos.min(CHUNK) as usize;
+        pos -= take as u64;
+        file.seek(SeekFrom::Start(pos)).map_err(read_err)?;
+        let mut window = vec![0u8; take];
+        file.read_exact(&mut window).map_err(read_err)?;
+        window.extend_from_slice(&carry);
+        let start = if pos == 0 {
+            0
+        } else if let Some(nl) = window.iter().position(|&b| b == b'\n') {
+            nl + 1 // window[..nl] is the tail of a line starting in an earlier chunk
+        } else {
+            carry = window; // line longer than the chunk: keep growing it
             continue;
         };
-        if v["sid"].as_str() != Some(session_id) {
-            continue;
+        for raw in window[start..].split(|&b| b == b'\n').rev() {
+            let line = String::from_utf8_lossy(raw);
+            if !line.contains(session_id) {
+                // ponytail: a line carrying another session's sid means we've
+                // walked past ours (sessions don't interleave while brulr runs
+                // one grok at a time); drop this early-stop if that changes.
+                if seen && line.contains("\"sid\":\"") {
+                    break 'chunks;
+                }
+                continue;
+            }
+            if !line.contains("inference_done") {
+                continue;
+            }
+            let Ok(v) = serde_json::from_str::<serde_json::Value>(&line) else {
+                continue;
+            };
+            if v["sid"].as_str() != Some(session_id) {
+                continue;
+            }
+            if v["msg"].as_str() != Some("shell.turn.inference_done") {
+                continue;
+            }
+            seen = true;
+            let ctx = &v["ctx"];
+            prompt += ctx["prompt_tokens"].as_u64().unwrap_or(0);
+            cached += ctx["cached_prompt_tokens"].as_u64().unwrap_or(0);
+            completion += ctx["completion_tokens"].as_u64().unwrap_or(0);
+            reasoning += ctx["reasoning_tokens"].as_u64().unwrap_or(0);
         }
-        if v["msg"].as_str() != Some("shell.turn.inference_done") {
-            continue;
-        }
-        seen = true;
-        let ctx = &v["ctx"];
-        prompt += ctx["prompt_tokens"].as_u64().unwrap_or(0);
-        cached += ctx["cached_prompt_tokens"].as_u64().unwrap_or(0);
-        completion += ctx["completion_tokens"].as_u64().unwrap_or(0);
-        reasoning += ctx["reasoning_tokens"].as_u64().unwrap_or(0);
+        carry = window[..start.saturating_sub(1)].to_vec();
     }
     if !seen {
         return Err(format!(
@@ -410,6 +444,35 @@ mod tests {
         assert_eq!(u.input_tokens, (1000 - 100) + (2000 - 500));
         assert_eq!(u.cache_read_input_tokens, 100 + 500);
         assert_eq!(u.output_tokens, 10 + 5 + 20 + 15);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn parse_grok_usage_from_log_reads_only_the_tail() {
+        // Hundreds of KB of older-session lines (spanning several reverse-read
+        // chunks, so lines straddle chunk boundaries), then our session last.
+        let sid = "sess-tail";
+        let dir = std::env::temp_dir().join(format!("brulr-grok-tail-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("unified.jsonl");
+        let mut f = File::create(&path).unwrap();
+        for i in 0..3000 {
+            writeln!(
+                f,
+                r#"{{"sid":"old-{i}","msg":"shell.turn.inference_done","ctx":{{"prompt_tokens":999,"completion_tokens":999,"padding":"{}"}}}}"#,
+                "x".repeat(60)
+            )
+            .unwrap();
+        }
+        writeln!(
+            f,
+            r#"{{"sid":"{sid}","msg":"shell.turn.inference_done","ctx":{{"prompt_tokens":1000,"cached_prompt_tokens":100,"completion_tokens":10,"reasoning_tokens":5}}}}"#
+        )
+        .unwrap();
+        let u = parse_grok_usage_from_log(&path, sid).unwrap();
+        assert_eq!(u.input_tokens, 1000 - 100); // old sessions not counted
+        assert_eq!(u.cache_read_input_tokens, 100);
+        assert_eq!(u.output_tokens, 10 + 5);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
