@@ -68,17 +68,55 @@ Run `brulr burn --help` for all flags.
 
 - `<target>`: what to burn toward. A token count (`100000`), a duration
   (`90s`/`45m`/`2h`), or a dollar amount (`5usd`/`0.25usd`). Defaults to `100000`.
-- `--harness <claude|codex|grok>`: which agent CLI to burn against. Defaults to
-  `claude`.
-- `--model <id>`: model to pass through. Defaults to the harness's own default.
-  Run `brulr models` for known ids. Known models must match `--harness` (e.g.
-  `grok-4.5` needs `--harness grok`); unknown ids still pass through.
-- `--effort <level>`: reasoning effort for the selected model. Valid levels
-  depend on harness and model (claude: `low|medium|high|xhigh|max`; codex:
-  `minimal|low|medium|high`; grok-4.5:
-  `minimal|low|medium|high|xhigh|max`). Some models reject effort entirely
-  (e.g. `grok-composer-2.5-fast`). Defaults to the harness/model default.
+- `--harness`, `--model`, `--effort`: see [Harnesses, models, and
+  efforts](#harnesses-models-and-efforts) below.
 - `--until <HH:MM>`: burn until the next occurrence of a local wall-clock time.
+
+### Harnesses, models, and efforts
+
+brülr shells out to an agent CLI (the **harness**), optionally with a
+**model** and **reasoning effort**. Known models must match their harness;
+unknown model ids still pass through. Effort is validated for the selected
+model (or the harness default when `--model` is omitted). Mismatches fail fast
+(exit 2), e.g. `--model grok-4.5` without `--harness grok`.
+
+Defaults: `--harness claude`; omit `--model` / `--effort` for the harness
+defaults. Run `brulr models` (or `brulr models --harness grok`) to print the
+known-model snapshot. Source of truth: `src/catalog.rs` (will go stale; any id
+the harness still accepts works even if it is not listed).
+
+| `--harness` | CLI | Install / login |
+| --- | --- | --- |
+| `claude` (default) | `claude` | Claude Code, logged in |
+| `codex` | `codex` | OpenAI Codex CLI, logged in |
+| `grok` | `grok` | [Grok Build CLI](https://x.ai/cli), logged in |
+
+#### `claude`
+
+| | |
+| --- | --- |
+| **Efforts** | `low` · `medium` · `high` · `xhigh` · `max` |
+| **Models** | `claude-sonnet-5` · `claude-fable-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-sonnet-4-6` · `claude-opus-4-6` · `claude-opus-4-5-20251101` · `claude-haiku-4-5-20251001` · `claude-sonnet-4-5-20250929` · `claude-opus-4-1-20250805` |
+
+All listed Claude models share the same effort set.
+
+#### `codex`
+
+| | |
+| --- | --- |
+| **Efforts** | `minimal` · `low` · `medium` · `high` |
+| **Models** | `gpt-5.3-codex` · `gpt-5.2-codex` · `gpt-5.1-codex-max` · `gpt-5.1-codex-mini` · `gpt-5.1-codex` · `gpt-5-codex` |
+
+All listed Codex models share the same effort set.
+
+#### `grok`
+
+Effort is **per model** (not shared across the harness):
+
+| Model | Efforts |
+| --- | --- |
+| `grok-4.5` (default) | `minimal` · `low` · `medium` · `high` · `xhigh` · `max` |
+| `grok-composer-2.5-fast` | — (`--effort` is rejected) |
 
 ## How it works
 
