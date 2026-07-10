@@ -2,6 +2,13 @@
 name = "brulr"
 version = "0.4.1"
 edition = "2024"
+description = "A CLI for burning AI tokens on purpose"
+license = "GPL-3.0-only"
+repository = "https://github.com/alephic-ai/brulr"
+homepage = "https://github.com/alephic-ai/brulr"
+readme = "README.md"
+keywords = ["cli", "tokens", "ai"]
+categories = ["command-line-utilities"]
 
 [dependencies]
 chrono = { version = "0.4", default-features = false, features = ["clock"] }

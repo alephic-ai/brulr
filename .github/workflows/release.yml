@@ -14,6 +14,7 @@ jobs:
     outputs:
       tag: ${{ steps.check.outputs.tag }}
       needed: ${{ steps.check.outputs.needed }}
+      crates_io_needed: ${{ steps.check.outputs.crates_io_needed }}
     steps:
       - uses: actions/checkout@v7
       - name: Check if version is unreleased
@@ -24,11 +25,21 @@ jobs:
           version=$(cargo pkgid | cut -d'#' -f2)
           tag="v$version"
           echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
           if gh release view "$tag" >/dev/null 2>&1; then
-            echo "$tag already released, skipping"
+            echo "$tag already released, skipping GitHub release"
             echo "needed=false" >> "$GITHUB_OUTPUT"
           else
             echo "needed=true" >> "$GITHUB_OUTPUT"
+          fi
+
+          # crates.io requires a User-Agent
+          if curl -sf -A "brulr-release-check" \
+            "https://crates.io/api/v1/crates/brulr/$version" >/dev/null; then
+            echo "brulr $version already on crates.io, skipping"
+            echo "crates_io_needed=false" >> "$GITHUB_OUTPUT"
+          else
+            echo "crates_io_needed=true" >> "$GITHUB_OUTPUT"
           fi
 
   build:
@@ -72,6 +83,7 @@ jobs:
 
   release:
     needs: [check, build]
+    if: needs.check.outputs.needed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -83,3 +95,24 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create '${{ needs.check.outputs.tag }}' --generate-notes dist/*
+
+  # Publishes via crates.io Trusted Publishing (OIDC) — no long-lived token.
+  # One-time setup after the first manual publish:
+  #   https://crates.io/crates/brulr/settings/new-trusted-publisher
+  #   Repository: alephic-ai/brulr
+  #   Workflow:   release.yml
+  crates-io:
+    needs: check
+    if: needs.check.outputs.crates_io_needed == 'true'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write # OIDC exchange with crates.io
+      contents: read
+    steps:
+      - uses: actions/checkout@v7
+      - uses: rust-lang/crates-io-auth-action@v1
+        id: auth
+      - name: Publish to crates.io
+        env:
+          CARGO_REGISTRY_TOKEN: ${{ steps.auth.outputs.token }}
+        run: cargo publish
