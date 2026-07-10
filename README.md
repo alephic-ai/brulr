@@ -105,7 +105,7 @@ All listed Claude models share the same effort set.
 | | |
 | --- | --- |
 | **Efforts** | `minimal` · `low` · `medium` · `high` |
-| **Models** | `gpt-5.3-codex` · `gpt-5.2-codex` · `gpt-5.1-codex-max` · `gpt-5.1-codex-mini` · `gpt-5.1-codex` · `gpt-5-codex` |
+| **Models** | `gpt-5.6-sol` (default) · `gpt-5.5` · `gpt-5.6-terra` · `gpt-5.6-luna` · `gpt-5.4` · `gpt-5.4-mini` · `gpt-5.3-codex-spark` |
 
 All listed Codex models share the same effort set.
 
