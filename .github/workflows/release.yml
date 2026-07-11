@@ -94,10 +94,6 @@ jobs:
         run: gh release create '${{ needs.check.outputs.tag }}' --generate-notes dist/*
 
   # Publishes via crates.io Trusted Publishing (OIDC) — no long-lived token.
-  # One-time setup after the first manual publish:
-  #   https://crates.io/crates/brulr/settings/new-trusted-publisher
-  #   Repository: alephic-ai/brulr
-  #   Workflow:   release.yml
   crates-io:
     needs: check
     if: needs.check.outputs.crates_io_needed == 'true'
