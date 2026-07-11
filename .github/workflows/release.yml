@@ -81,7 +81,6 @@ jobs:
 
   release:
     needs: [check, build]
-    if: needs.check.outputs.needed == 'true'
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
