@@ -104,7 +104,7 @@ the harness still accepts works even if it is not listed).
 | | |
 | --- | --- |
 | **Efforts** | `low` · `medium` · `high` · `xhigh` · `max` |
-| **Models** | `claude-sonnet-5` · `claude-fable-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-sonnet-4-6` · `claude-opus-4-6` · `claude-opus-4-5-20251101` · `claude-haiku-4-5-20251001` · `claude-sonnet-4-5-20250929` · `claude-opus-4-1-20250805` |
+| **Models** | `claude-opus-5` (default) · `claude-sonnet-5` · `claude-fable-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-sonnet-4-6` · `claude-opus-4-6` · `claude-opus-4-5-20251101` · `claude-haiku-4-5-20251001` · `claude-sonnet-4-5-20250929` · `claude-opus-4-1-20250805` |
 
 All listed Claude models share the same effort set.
 

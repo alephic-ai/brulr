@@ -32,6 +32,9 @@ fn run_harness(mut cmd: Command, name: &str) -> Result<Vec<u8>, String> {
 }
 
 /// The real backend: shells out to the `claude` CLI in one-shot mode.
+/// Flags verified on Claude Code 2.1.251: `--tools ""` still disables tools,
+/// `--no-session-persistence` still exists, JSON usage still has the same
+/// token/cost fields (`thinking_tokens` is a subset of `output_tokens`).
 pub struct ClaudeBurner {
     pub model: Option<String>,
     pub effort: Option<String>,
@@ -252,6 +255,19 @@ mod tests {
         assert!((u.cost_usd - 0.0123).abs() < 1e-9); // top-level total_cost_usd
         // Cache-creation counts as burn; cache-read does not.
         assert_eq!(u.processed(), 25003);
+    }
+
+    #[test]
+    fn parse_usage_reads_claude_code_2_1_shape() {
+        // Real Claude Code 2.1.251 result; thinking_tokens is a subset of output.
+        let json = br#"{"type":"result","total_cost_usd":0.066115,"usage":{"input_tokens":2,"cache_creation_input_tokens":6088,"cache_read_input_tokens":0,"output_tokens":209,"output_tokens_details":{"thinking_tokens":68}},"modelUsage":{"claude-opus-5[1m]":{"canonicalModel":"claude-opus-5"}}}"#;
+        let u = parse_usage(json).unwrap();
+        assert_eq!(u.input_tokens, 2);
+        assert_eq!(u.cache_creation_input_tokens, 6088);
+        assert_eq!(u.output_tokens, 209); // thinking is a subset, not added
+        assert_eq!(u.cache_read_input_tokens, 0);
+        assert!((u.cost_usd - 0.066115).abs() < 1e-9);
+        assert_eq!(u.processed(), 6299);
     }
 
     #[test]
