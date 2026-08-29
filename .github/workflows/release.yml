@@ -97,6 +97,86 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: gh release create '${{ needs.check.outputs.tag }}' --generate-notes dist/*
 
+  homebrew:
+    name: Update Homebrew tap
+    needs: [check, release]
+    runs-on: ubuntu-latest
+    steps:
+      # The bot is a bypass actor on the org rulesets that gate every default
+      # branch; github.token would be rejected pushing to the tap's main.
+      - name: Generate Alephic Bot token
+        uses: actions/create-github-app-token@v2
+        id: app-token
+        with:
+          app-id: ${{ vars.ALEPHIC_BOT_APP_ID }}
+          private-key: ${{ secrets.ALEPHIC_BOT_SECRET }}
+          repositories: homebrew-tap
+          permission-contents: write
+      - uses: actions/checkout@v7
+        with:
+          repository: alephic-ai/homebrew-tap
+          token: ${{ steps.app-token.outputs.token }}
+      # The formula is generated, never hand-edited. Fix a bad one here, not
+      # in the tap.
+      - env:
+          TAG: ${{ needs.check.outputs.tag }}
+        run: |
+          set -euo pipefail
+          base="https://github.com/alephic-ai/brulr/releases/download/${TAG}"
+          # ponytail: the build job ships no .sha256 sidecars, so hash the
+          # tarballs here. Emit sidecars in build if this gets slow.
+          sha() {
+            curl -fsSL "${base}/brulr-${TAG}-$1.tar.gz" | sha256sum | cut -d' ' -f1
+          }
+          mkdir -p Formula
+          # `brew style` rejects a desc opening with an article or with the
+          # formula name, so this is not the repo's own description.
+          cat > Formula/brulr.rb <<EOF
+          class Brulr < Formula
+            desc "Burn AI tokens on purpose, and produce nothing at all"
+            homepage "https://github.com/alephic-ai/brulr"
+            version "${TAG#v}"
+            license "GPL-3.0-only"
+
+            on_macos do
+              on_arm do
+                url "${base}/brulr-${TAG}-aarch64-apple-darwin.tar.gz"
+                sha256 "$(sha aarch64-apple-darwin)"
+              end
+              on_intel do
+                url "${base}/brulr-${TAG}-x86_64-apple-darwin.tar.gz"
+                sha256 "$(sha x86_64-apple-darwin)"
+              end
+            end
+
+            on_linux do
+              on_arm do
+                url "${base}/brulr-${TAG}-aarch64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha aarch64-unknown-linux-gnu)"
+              end
+              on_intel do
+                url "${base}/brulr-${TAG}-x86_64-unknown-linux-gnu.tar.gz"
+                sha256 "$(sha x86_64-unknown-linux-gnu)"
+              end
+            end
+
+            def install
+              bin.install "brulr"
+            end
+
+            test do
+              assert_match version.to_s, shell_output("#{bin}/brulr --version")
+            end
+          end
+          EOF
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add Formula/brulr.rb
+          git diff --quiet --cached || git commit -m "brulr ${TAG#v}"
+          # Another tool releasing at once pushes here too; concurrency groups
+          # are per-repo, so the loser rebases instead of failing the release.
+          git push || { git pull --rebase && git push; }
+
   # Publishes via crates.io Trusted Publishing (OIDC) — no long-lived token.
   crates-io:
     needs: check

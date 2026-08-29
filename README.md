@@ -30,6 +30,14 @@ chart was never measuring what you thought it was.
 
 ## Install
 
+With [Homebrew](https://brew.sh), on macOS or Linux:
+
+```sh
+brew install alephic-ai/tap/brulr
+```
+
+Or without Homebrew:
+
 ```sh
 brew install ubi
 ubi --project alephic-ai/brulr --in ~/.local/bin
