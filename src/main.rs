@@ -54,7 +54,7 @@ enum Cmd {
         #[arg(long)]
         model: Option<String>,
         /// Reasoning effort for the selected model (see harness docs). Rejected
-        /// when the model does not support effort (e.g. grok-composer-2.5-fast).
+        /// when the model does not support that effort.
         /// Default: the harness/model default.
         #[arg(long)]
         effort: Option<String>,

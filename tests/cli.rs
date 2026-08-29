@@ -49,35 +49,35 @@ fn burn_args(args: &[&str]) -> std::process::Output {
 
 #[test]
 fn model_on_wrong_harness_errors() {
-    // Default harness is claude; grok-4.5 is a known grok model.
-    let out = burn_args(&["burn", "100", "--model", "grok-4.5"]);
+    // Default harness is claude; grok-4.6 is a known grok model.
+    let out = burn_args(&["burn", "100", "--model", "grok-4.6"]);
     assert!(!out.status.success(), "expected non-zero exit");
     assert_eq!(out.status.code(), Some(2), "expected usage exit 2");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("model 'grok-4.5' is for harness 'grok'"),
+        stderr.contains("model 'grok-4.6' is for harness 'grok'"),
         "stderr was: {stderr}"
     );
     assert!(stderr.contains("--harness grok"), "stderr was: {stderr}");
 }
 
 #[test]
-fn effort_on_model_without_effort_errors() {
+fn invalid_effort_for_grok_model_errors() {
     let out = burn_args(&[
         "burn",
         "100",
         "--harness",
         "grok",
         "--model",
-        "grok-composer-2.5-fast",
+        "grok-4.6",
         "--effort",
-        "high",
+        "minimal",
     ]);
     assert!(!out.status.success(), "expected non-zero exit");
     assert_eq!(out.status.code(), Some(2), "expected usage exit 2");
     let stderr = String::from_utf8_lossy(&out.stderr);
     assert!(
-        stderr.contains("does not support --effort"),
+        stderr.contains("invalid effort 'minimal'"),
         "stderr was: {stderr}"
     );
 }
