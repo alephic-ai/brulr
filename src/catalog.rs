@@ -9,9 +9,16 @@
 // To update: `claude --help` lists the values on the `--effort <level>` line.
 pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
-/// Shared effort levels for all known Codex models.
-// To update: see codex's `model_reasoning_effort` config documentation.
-pub const CODEX_EFFORTS: &[&str] = &["minimal", "low", "medium", "high"];
+/// Effort levels for `gpt-5.6-sol` / `gpt-5.6-terra` (harness default).
+/// Empirically from `codex debug models` on 0.151.0 (2026-08-29).
+// To update: `codex debug models` → `supported_reasoning_levels`.
+pub const CODEX_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max", "ultra"];
+
+/// Effort levels for `gpt-5.6-luna` (`ultra` is not advertised).
+const CODEX_LUNA_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
+
+/// Effort levels for gpt-5.5 / 5.4 / spark (`max` and `ultra` are not advertised).
+const CODEX_55_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
 
 /// Effort levels for `grok-4.6` (harness default). Empirically verified
 /// 2026-08-29 on grok 1.0.13: advertised menu is `low`/`medium`/`high`/`xhigh`.
@@ -49,7 +56,8 @@ pub struct HarnessInfo {
 //     -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
 //     | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
 //
-// Codex models: Codex CLI model picker (2026-07-10).
+// Codex models: live `codex debug models` on 0.151.0 (2026-08-29); first
+// entry is the CLI default (`codex doctor`: gpt-5.6-sol).
 // Grok models: `grok models` (requires login); 2026-08-29 on grok 1.0.13.
 pub const HARNESSES: &[HarnessInfo] = &[
     HarnessInfo {
@@ -69,15 +77,15 @@ pub const HARNESSES: &[HarnessInfo] = &[
     },
     HarnessInfo {
         name: "codex",
-        // Codex model picker order (2026-07-10); first entry is the default.
+        // Live picker order (visibility=list) on 0.151.0; first entry is default.
         models: &[
             Model { id: "gpt-5.6-sol", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.5", efforts: CODEX_EFFORTS },
             Model { id: "gpt-5.6-terra", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.6-luna", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.4", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.4-mini", efforts: CODEX_EFFORTS },
-            Model { id: "gpt-5.3-codex-spark", efforts: CODEX_EFFORTS },
+            Model { id: "gpt-5.6-luna", efforts: CODEX_LUNA_EFFORTS },
+            Model { id: "gpt-5.5", efforts: CODEX_55_EFFORTS },
+            Model { id: "gpt-5.4", efforts: CODEX_55_EFFORTS },
+            Model { id: "gpt-5.4-mini", efforts: CODEX_55_EFFORTS },
+            Model { id: "gpt-5.3-codex-spark", efforts: CODEX_55_EFFORTS },
         ],
     },
     HarnessInfo {
@@ -175,20 +183,20 @@ pub fn validate_selection(
 /// Codex price snapshot: (model, input, cached-input, output) in USD per 1M
 /// tokens. codex does not report cost, so dollar output is derived from this.
 //
-// Verified 2026-07-10 against https://developers.openai.com/api/docs/pricing
-// (short-context standard rates). Cached input is the published rate (typically
-// 0.1× input). gpt-5.3-codex-spark is research-preview and not listed on the
-// pricing page; rate is inferred from gpt-5.3-codex. Legacy codex ids kept so
-// pass-through burns still price correctly. First entry is the assumed default
-// when `--model` is omitted or unknown.
+// Verified 2026-08-29 against https://developers.openai.com/api/docs/pricing
+// (short-context standard rates). gpt-5.6-sol promotional pricing is listed
+// through at least 2026-11-21. Cached input is the published rate (typically
+// 0.1× input). gpt-5.3-codex-spark is not listed; rate is inferred from
+// gpt-5.3-codex. Legacy ids kept so pass-through burns still price correctly.
+// First entry is the assumed default when `--model` is omitted or unknown.
 pub const CODEX_PRICES: &[(&str, f64, f64, f64)] = &[
-    ("gpt-5.6-sol", 5.0, 0.50, 30.0),
+    ("gpt-5.6-sol", 4.0, 0.40, 20.0),
+    ("gpt-5.6-terra", 2.0, 0.20, 12.0),
+    ("gpt-5.6-luna", 0.20, 0.02, 1.20),
     ("gpt-5.5", 5.0, 0.50, 30.0),
-    ("gpt-5.6-terra", 2.50, 0.25, 15.0),
-    ("gpt-5.6-luna", 1.0, 0.10, 6.0),
     ("gpt-5.4", 2.50, 0.25, 15.0),
     ("gpt-5.4-mini", 0.75, 0.075, 4.50),
-    ("gpt-5.3-codex-spark", 1.75, 0.175, 14.0), // research preview: inferred
+    ("gpt-5.3-codex-spark", 1.75, 0.175, 14.0), // inferred from gpt-5.3-codex
     // legacy ids (still pass through if the harness accepts them)
     ("gpt-5.3-codex", 1.75, 0.175, 14.0),
     ("gpt-5.2-codex", 1.75, 0.175, 14.0),
@@ -257,7 +265,24 @@ mod tests {
 
     #[test]
     fn omitted_model_uses_default_efforts() {
-        assert!(validate_selection("codex", None, Some("minimal")).is_ok());
-        assert!(validate_selection("codex", None, Some("xhigh")).is_err());
+        assert!(validate_selection("codex", None, Some("ultra")).is_ok());
+        assert!(validate_selection("codex", None, Some("xhigh")).is_ok());
+        assert!(validate_selection("codex", None, Some("minimal")).is_err());
+    }
+
+    #[test]
+    fn gpt56_luna_rejects_ultra() {
+        assert!(validate_selection("codex", Some("gpt-5.6-luna"), Some("max")).is_ok());
+        let err = validate_selection("codex", Some("gpt-5.6-luna"), Some("ultra")).unwrap_err();
+        assert!(err.contains("invalid effort 'ultra'"), "err was: {err}");
+        assert!(err.contains("model 'gpt-5.6-luna'"), "err was: {err}");
+    }
+
+    #[test]
+    fn gpt55_rejects_max() {
+        assert!(validate_selection("codex", Some("gpt-5.5"), Some("xhigh")).is_ok());
+        let err = validate_selection("codex", Some("gpt-5.5"), Some("max")).unwrap_err();
+        assert!(err.contains("invalid effort 'max'"), "err was: {err}");
+        assert!(err.contains("model 'gpt-5.5'"), "err was: {err}");
     }
 }

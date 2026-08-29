@@ -110,12 +110,14 @@ All listed Claude models share the same effort set.
 
 #### `codex`
 
-| | |
-| --- | --- |
-| **Efforts** | `minimal` · `low` · `medium` · `high` |
-| **Models** | `gpt-5.6-sol` (default) · `gpt-5.5` · `gpt-5.6-terra` · `gpt-5.6-luna` · `gpt-5.4` · `gpt-5.4-mini` · `gpt-5.3-codex-spark` |
+Effort is **per model** (not shared across the harness):
 
-All listed Codex models share the same effort set.
+| Model | Efforts |
+| --- | --- |
+| `gpt-5.6-sol` (default) | `low` · `medium` · `high` · `xhigh` · `max` · `ultra` |
+| `gpt-5.6-terra` | `low` · `medium` · `high` · `xhigh` · `max` · `ultra` |
+| `gpt-5.6-luna` | `low` · `medium` · `high` · `xhigh` · `max` |
+| `gpt-5.5` · `gpt-5.4` · `gpt-5.4-mini` · `gpt-5.3-codex-spark` | `low` · `medium` · `high` · `xhigh` |
 
 #### `grok`
 
