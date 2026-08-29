@@ -68,9 +68,10 @@ pub struct CodexBurner {
 impl Burner for CodexBurner {
     fn run(&mut self, prompt: &str) -> Result<Usage, String> {
         let mut cmd = Command::new("codex");
-        // ponytail: these flags are version-sensitive (codex 0.142.x). `-c
+        // ponytail: these flags are version-sensitive (codex 0.151.0). `-c
         // approval_policy=never` is the unattended shim; read-only sandbox
-        // keeps a burn prompt from touching the machine.
+        // keeps a burn prompt from touching the machine. JSONL still uses
+        // `turn.completed` with inclusive `input_tokens`.
         cmd.args([
             "exec",
             "--json",
