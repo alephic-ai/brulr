@@ -16,8 +16,8 @@ mod rng;
 mod usage;
 
 pub use backend::{
-    codex_cost, grok_cost, parse_codex_usage, parse_grok_session_id, parse_grok_usage_from_log,
-    parse_usage, Burner, ClaudeBurner, CodexBurner, GrokBurner,
+    codex_cost, grok_cost, parse_codex_usage, parse_grok_usage, parse_usage, Burner,
+    ClaudeBurner, CodexBurner, GrokBurner,
 };
 pub use burn::burn;
 pub use calibrate::{calibrate, Calibration, MAX_PAD_BYTES, PROBES};

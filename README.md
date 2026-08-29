@@ -86,7 +86,7 @@ brülr shells out to an agent CLI (the **harness**), optionally with a
 **model** and **reasoning effort**. Known models must match their harness;
 unknown model ids still pass through. Effort is validated for the selected
 model (or the harness default when `--model` is omitted). Mismatches fail fast
-(exit 2), e.g. `--model grok-4.5` without `--harness grok`.
+(exit 2), e.g. `--model grok-4.6` without `--harness grok`.
 
 Defaults: `--harness claude`; omit `--model` / `--effort` for the harness
 defaults. Run `brulr models` (or `brulr models --harness grok`) to print the
@@ -123,8 +123,8 @@ Effort is **per model** (not shared across the harness):
 
 | Model | Efforts |
 | --- | --- |
-| `grok-4.5` (default) | `minimal` · `low` · `medium` · `high` · `xhigh` · `max` |
-| `grok-composer-2.5-fast` | — (`--effort` is rejected) |
+| `grok-4.6` (default) | `low` · `medium` · `high` · `xhigh` |
+| `grok-4.5` | `low` · `medium` · `high` |
 
 ## How it works
 
@@ -149,13 +149,12 @@ prints a warning: the padding is being cached and the burn isn't real.
 
 The report also prints a dollar figure, and `burn 5usd` burns until it hits a
 target spend. `claude` reports its own cost, so those numbers are exact. `codex`
-and `grok` don't, so their cost comes from hardcoded price snapshots
-(`CODEX_PRICES` / `GROK_PRICES` in `src/catalog.rs`); check them against current
-pricing before you trust those dollars. Grok also omits token counts from
-headless JSON, so brülr recovers usage from the Grok Build log
-(`~/.grok/logs/unified.jsonl`). On a subscription these are API-equivalent
-dollars, not charges against your plan. On a metered API key it would be real
-money.
+does not, so its cost comes from a hardcoded price snapshot (`CODEX_PRICES` in
+`src/catalog.rs`). `grok` reports `total_cost_usd` in headless JSON when the
+server stamps it (typically API-key traffic); otherwise dollars come from
+`GROK_PRICES`. Check snapshots against current pricing before you trust those
+dollars. On a subscription these are API-equivalent dollars, not charges against
+your plan. On a metered API key it would be real money.
 
 ## Library
 

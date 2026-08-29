@@ -13,14 +13,15 @@ pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 // To update: see codex's `model_reasoning_effort` config documentation.
 pub const CODEX_EFFORTS: &[&str] = &["minimal", "low", "medium", "high"];
 
-/// Effort levels for `grok-4.5` (harness default). Empirically verified
-/// 2026-07-09 on grok 0.2.93: `none` is rejected by the API; the rest work
-/// (`max` aliases `xhigh`).
-// To update: `grok -p … --effort <level>` against grok-4.5.
-pub const GROK_EFFORTS: &[&str] = &["minimal", "low", "medium", "high", "xhigh", "max"];
+/// Effort levels for `grok-4.6` (harness default). Empirically verified
+/// 2026-08-29 on grok 1.0.13: advertised menu is `low`/`medium`/`high`/`xhigh`.
+/// `none`, `minimal`, and `max` are rejected (`max` no longer aliases `xhigh`).
+// To update: `grok -p x --effort bogus` prints the accepted list.
+pub const GROK_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh"];
 
-/// Empty effort set: model does not support `--effort`.
-const NO_EFFORTS: &[&str] = &[];
+/// Effort levels for `grok-4.5`. Empirically verified 2026-08-29 on grok
+/// 1.0.13: advertised menu is `low`/`medium`/`high` (no `xhigh`).
+const GROK_45_EFFORTS: &[&str] = &["low", "medium", "high"];
 
 /// One known model and the reasoning-effort levels it accepts.
 /// `efforts` empty means `--effort` is not allowed on this model.
@@ -49,7 +50,7 @@ pub struct HarnessInfo {
 //     | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
 //
 // Codex models: Codex CLI model picker (2026-07-10).
-// Grok models: `grok models` (requires login); 2026-07-09.
+// Grok models: `grok models` (requires login); 2026-08-29 on grok 1.0.13.
 pub const HARNESSES: &[HarnessInfo] = &[
     HarnessInfo {
         name: "claude",
@@ -82,9 +83,8 @@ pub const HARNESSES: &[HarnessInfo] = &[
     HarnessInfo {
         name: "grok",
         models: &[
-            Model { id: "grok-4.5", efforts: GROK_EFFORTS },
-            // Composer ignores effort; empty set rejects --effort explicitly.
-            Model { id: "grok-composer-2.5-fast", efforts: NO_EFFORTS },
+            Model { id: "grok-4.6", efforts: GROK_EFFORTS },
+            Model { id: "grok-4.5", efforts: GROK_45_EFFORTS },
         ],
     },
 ];
@@ -199,18 +199,15 @@ pub const CODEX_PRICES: &[(&str, f64, f64, f64)] = &[
 ];
 
 /// Grok price snapshot: (model, input, cached-input, output) in USD per 1M
-/// tokens. grok does not report cost in headless JSON, so dollars are derived.
+/// tokens. Fallback when headless JSON omits `total_cost_usd`.
 //
-// grok-4.5: docs.x.ai pricing (verified 2026-07-09) — $2 / $0.50 / $6.
-// grok-composer-2.5-fast: Cursor Composer 2.5 Fast list rates ($3 / $15);
-// xAI does not publish Composer rates (subscription-bundled). Cached input
-// is unpublished for Composer — 0.1× input ($0.30), OpenAI-style convention.
+// grok-4.6: docs.x.ai pricing (verified 2026-08-29) — $2 / $0.50 / $6
+//           below 200k prompt tokens (≥200k is 2×; not modeled here).
+// grok-4.5: docs.x.ai pricing (verified 2026-08-29) — $2 / $0.30 / $6.
 // First entry is the assumed default when `--model` is omitted or unknown.
-//
-// ponytail: Composer cache rate is guessed; refresh when xAI/Cursor publish it.
 pub const GROK_PRICES: &[(&str, f64, f64, f64)] = &[
-    ("grok-4.5", 2.0, 0.50, 6.0),
-    ("grok-composer-2.5-fast", 3.0, 0.30, 15.0),
+    ("grok-4.6", 2.0, 0.50, 6.0),
+    ("grok-4.5", 2.0, 0.30, 6.0),
 ];
 
 #[cfg(test)]
@@ -219,6 +216,7 @@ mod tests {
 
     #[test]
     fn harness_for_model_resolves_owners() {
+        assert_eq!(harness_for_model("grok-4.6"), Some("grok"));
         assert_eq!(harness_for_model("grok-4.5"), Some("grok"));
         assert_eq!(harness_for_model("claude-opus-4-8"), Some("claude"));
         assert_eq!(harness_for_model("gpt-5.6-sol"), Some("codex"));
@@ -227,23 +225,24 @@ mod tests {
 
     #[test]
     fn wrong_harness_for_known_model_errors() {
-        let err = validate_selection("claude", Some("grok-4.5"), None).unwrap_err();
+        let err = validate_selection("claude", Some("grok-4.6"), None).unwrap_err();
         assert!(err.contains("grok"), "err was: {err}");
         assert!(err.contains("--harness grok"), "err was: {err}");
     }
 
     #[test]
-    fn composer_rejects_effort() {
-        let err =
-            validate_selection("grok", Some("grok-composer-2.5-fast"), Some("high")).unwrap_err();
-        assert!(err.contains("does not support --effort"), "err was: {err}");
+    fn grok_46_accepts_xhigh_rejects_minimal() {
+        assert!(validate_selection("grok", Some("grok-4.6"), Some("xhigh")).is_ok());
+        let err = validate_selection("grok", Some("grok-4.6"), Some("minimal")).unwrap_err();
+        assert!(err.contains("invalid effort 'minimal'"), "err was: {err}");
+        assert!(err.contains("model 'grok-4.6'"), "err was: {err}");
     }
 
     #[test]
-    fn grok_45_accepts_minimal_rejects_none() {
-        assert!(validate_selection("grok", Some("grok-4.5"), Some("minimal")).is_ok());
-        let err = validate_selection("grok", Some("grok-4.5"), Some("none")).unwrap_err();
-        assert!(err.contains("invalid effort 'none'"), "err was: {err}");
+    fn grok_45_accepts_high_rejects_xhigh() {
+        assert!(validate_selection("grok", Some("grok-4.5"), Some("high")).is_ok());
+        let err = validate_selection("grok", Some("grok-4.5"), Some("xhigh")).unwrap_err();
+        assert!(err.contains("invalid effort 'xhigh'"), "err was: {err}");
         assert!(err.contains("model 'grok-4.5'"), "err was: {err}");
     }
 
