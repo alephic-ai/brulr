@@ -7,6 +7,7 @@
 
 /// Shared effort levels for all known Claude models.
 // To update: `claude --help` lists the values on the `--effort <level>` line.
+// Verified 2026-08-29 on Claude Code 2.1.251.
 pub const CLAUDE_EFFORTS: &[&str] = &["low", "medium", "high", "xhigh", "max"];
 
 /// Shared effort levels for all known Codex models.
@@ -44,7 +45,10 @@ pub struct HarnessInfo {
 /// Model tables are snapshots for discovery and validation; newer ids not
 /// listed here still work as pass-through on their harness.
 //
-// Claude models: 2026-07-03 from the Anthropic model API (needs ANTHROPIC_API_KEY):
+// Claude models: Claude Code 2.1.251 (2026-08-29). Default is Opus 5
+// (`claude /model` prints "Opus 5 (1M context) (default)"). Full ids from
+// `claude --help` aliases (fable/opus/sonnet/haiku) plus still-accepted
+// 4.x snapshots. Needs ANTHROPIC_API_KEY to refresh from the API:
 //   curl -s https://api.anthropic.com/v1/models \
 //     -H "x-api-key: $ANTHROPIC_API_KEY" -H "anthropic-version: 2023-06-01" \
 //     | python3 -c 'import json,sys; [print(m["id"]) for m in json.load(sys.stdin)["data"]]'
@@ -55,6 +59,7 @@ pub const HARNESSES: &[HarnessInfo] = &[
     HarnessInfo {
         name: "claude",
         models: &[
+            Model { id: "claude-opus-5", efforts: CLAUDE_EFFORTS },
             Model { id: "claude-sonnet-5", efforts: CLAUDE_EFFORTS },
             Model { id: "claude-fable-5", efforts: CLAUDE_EFFORTS },
             Model { id: "claude-opus-4-8", efforts: CLAUDE_EFFORTS },
@@ -218,6 +223,7 @@ mod tests {
     fn harness_for_model_resolves_owners() {
         assert_eq!(harness_for_model("grok-4.6"), Some("grok"));
         assert_eq!(harness_for_model("grok-4.5"), Some("grok"));
+        assert_eq!(harness_for_model("claude-opus-5"), Some("claude"));
         assert_eq!(harness_for_model("claude-opus-4-8"), Some("claude"));
         assert_eq!(harness_for_model("gpt-5.6-sol"), Some("codex"));
         assert_eq!(harness_for_model("totally-unknown"), None);
