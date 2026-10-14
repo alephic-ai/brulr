@@ -66,7 +66,7 @@ brulr burn --until 07:00   # burn until the next local 07:00
 
 brulr burn --harness codex # burn via codex instead of claude
 brulr burn --harness grok  # burn via the xAI Grok Build CLI
-brulr burn --model claude-opus-4-8 --effort high
+brulr burn --model claude-sonnet-5-5 --effort high
 brulr models               # list known models per harness
 ```
 
@@ -86,7 +86,7 @@ brülr shells out to an agent CLI (the **harness**), optionally with a
 **model** and **reasoning effort**. Known models must match their harness;
 unknown model ids still pass through. Effort is validated for the selected
 model (or the harness default when `--model` is omitted). Mismatches fail fast
-(exit 2), e.g. `--model grok-4.6` without `--harness grok`.
+(exit 2), e.g. `--model grok-4.7` without `--harness grok`.
 
 Defaults: `--harness claude`; omit `--model` / `--effort` for the harness
 defaults. Run `brulr models` (or `brulr models --harness grok`) to print the
@@ -104,7 +104,7 @@ the harness still accepts works even if it is not listed).
 | | |
 | --- | --- |
 | **Efforts** | `low` · `medium` · `high` · `xhigh` · `max` |
-| **Models** | `claude-opus-5` (default) · `claude-sonnet-5` · `claude-fable-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-sonnet-4-6` · `claude-opus-4-6` · `claude-opus-4-5-20251101` · `claude-haiku-4-5-20251001` · `claude-sonnet-4-5-20250929` · `claude-opus-4-1-20250805` |
+| **Models** | `claude-opus-5-5` (default) · `claude-sonnet-5-5` · `claude-fable-5-1` · `claude-haiku-5-5` · `claude-opus-5` · `claude-sonnet-5` · `claude-fable-5` · `claude-opus-4-8` · `claude-opus-4-7` · `claude-sonnet-4-6` · `claude-opus-4-6` · `claude-opus-4-5-20251101` · `claude-haiku-4-5-20251001` · `claude-sonnet-4-5-20250929` |
 
 All listed Claude models share the same effort set.
 
@@ -114,10 +114,8 @@ Effort is **per model** (not shared across the harness):
 
 | Model | Efforts |
 | --- | --- |
-| `gpt-5.6-sol` (default) | `low` · `medium` · `high` · `xhigh` · `max` · `ultra` |
-| `gpt-5.6-terra` | `low` · `medium` · `high` · `xhigh` · `max` · `ultra` |
-| `gpt-5.6-luna` | `low` · `medium` · `high` · `xhigh` · `max` |
-| `gpt-5.5` · `gpt-5.4` · `gpt-5.4-mini` · `gpt-5.3-codex-spark` | `low` · `medium` · `high` · `xhigh` |
+| `gpt-6.1-sol` (default) · `gpt-6-astra` · `gpt-6-sol` · `gpt-5.6-sol` · `gpt-5.6-terra` | `low` · `medium` · `high` · `xhigh` · `max` · `ultra` |
+| `gpt-6-luna` · `gpt-5.6-luna` | `low` · `medium` · `high` · `xhigh` · `max` |
 
 #### `grok`
 
@@ -125,7 +123,7 @@ Effort is **per model** (not shared across the harness):
 
 | Model | Efforts |
 | --- | --- |
-| `grok-4.6` (default) | `low` · `medium` · `high` · `xhigh` |
+| `grok-4.7` (default) · `grok-4.7-build-fast` · `grok-4.6` | `low` · `medium` · `high` · `xhigh` |
 | `grok-4.5` | `low` · `medium` · `high` |
 
 ## How it works

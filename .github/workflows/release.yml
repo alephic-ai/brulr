@@ -105,10 +105,10 @@ jobs:
       # The bot is a bypass actor on the org rulesets that gate every default
       # branch; github.token would be rejected pushing to the tap's main.
       - name: Generate Alephic Bot token
-        uses: actions/create-github-app-token@v2
+        uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.ALEPHIC_BOT_APP_ID }}
+          client-id: ${{ vars.ALEPHIC_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ALEPHIC_BOT_SECRET }}
           repositories: homebrew-tap
           permission-contents: write
