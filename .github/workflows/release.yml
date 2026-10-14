@@ -108,7 +108,7 @@ jobs:
         uses: actions/create-github-app-token@v3
         id: app-token
         with:
-          app-id: ${{ vars.ALEPHIC_BOT_APP_ID }}
+          client-id: ${{ vars.ALEPHIC_BOT_CLIENT_ID }}
           private-key: ${{ secrets.ALEPHIC_BOT_SECRET }}
           repositories: homebrew-tap
           permission-contents: write
