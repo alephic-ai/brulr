@@ -32,7 +32,7 @@ fn run_harness(mut cmd: Command, name: &str) -> Result<Vec<u8>, String> {
 }
 
 /// The real backend: shells out to the `claude` CLI in one-shot mode.
-/// Flags verified on Claude Code 2.1.251: `--tools ""` still disables tools,
+/// Flags verified on Claude Code 2.1.300: `--tools ""` still disables tools,
 /// `--no-session-persistence` still exists, JSON usage still has the same
 /// token/cost fields (`thinking_tokens` is a subset of `output_tokens`).
 pub struct ClaudeBurner {
@@ -71,7 +71,7 @@ pub struct CodexBurner {
 impl Burner for CodexBurner {
     fn run(&mut self, prompt: &str) -> Result<Usage, String> {
         let mut cmd = Command::new("codex");
-        // ponytail: these flags are version-sensitive (codex 0.151.0). `-c
+        // ponytail: these flags are version-sensitive (codex 0.162.1). `-c
         // approval_policy=never` is the unattended shim; read-only sandbox
         // keeps a burn prompt from touching the machine. JSONL still uses
         // `turn.completed` with inclusive `input_tokens`.
@@ -114,11 +114,13 @@ pub fn parse_usage(stdout: &[u8]) -> Result<Usage, String> {
 }
 
 /// Sum token usage from codex's JSONL `turn.completed` events. codex reports
-/// `input_tokens` inclusive of `cached_input_tokens`, so fresh input is the
-/// difference; reasoning tokens count as output; there is no cache-creation.
+/// `input_tokens` inclusive of `cached_input_tokens` and
+/// `cache_write_input_tokens`, so fresh input is what remains; reasoning
+/// tokens count as output.
 pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
     let mut input = 0u64;
     let mut cached = 0u64;
+    let mut cache_write = 0u64;
     let mut output = 0u64;
     let mut seen = false;
     for line in stdout.split(|&b| b == b'\n') {
@@ -132,6 +134,7 @@ pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
         let u = &v["usage"];
         input += u["input_tokens"].as_u64().unwrap_or(0);
         cached += u["cached_input_tokens"].as_u64().unwrap_or(0);
+        cache_write += u["cache_write_input_tokens"].as_u64().unwrap_or(0);
         output += u["output_tokens"].as_u64().unwrap_or(0)
             + u["reasoning_output_tokens"].as_u64().unwrap_or(0);
     }
@@ -139,8 +142,8 @@ pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
         return Err("no turn.completed usage event in codex output".into());
     }
     Ok(Usage {
-        input_tokens: input.saturating_sub(cached),
-        cache_creation_input_tokens: 0,
+        input_tokens: input.saturating_sub(cached).saturating_sub(cache_write),
+        cache_creation_input_tokens: cache_write,
         output_tokens: output,
         cache_read_input_tokens: cached,
         cost_usd: 0.0, // filled in by CodexBurner from CODEX_PRICES
@@ -150,11 +153,12 @@ pub fn parse_codex_usage(stdout: &[u8]) -> Result<Usage, String> {
 /// USD cost of `usage` for a codex `model` (None/unknown falls back to the
 /// first `CODEX_PRICES` entry).
 pub fn codex_cost(model: Option<&str>, usage: &Usage) -> f64 {
-    let (_, inp, cached, out) = model
+    let (_, inp, cached, write, out) = model
         .and_then(|m| CODEX_PRICES.iter().find(|(name, ..)| *name == m).copied())
         .unwrap_or(CODEX_PRICES[0]);
     (usage.input_tokens as f64 * inp
         + usage.cache_read_input_tokens as f64 * cached
+        + usage.cache_creation_input_tokens as f64 * write
         + usage.output_tokens as f64 * out)
         / 1_000_000.0
 }
@@ -274,12 +278,13 @@ mod tests {
     fn codex_cost_uses_price_table() {
         let usage = Usage {
             input_tokens: 1_000_000,
+            cache_creation_input_tokens: 1_000_000,
             cache_read_input_tokens: 1_000_000,
             output_tokens: 1_000_000,
             ..Default::default()
         };
-        let (_, inp, cached, out) = CODEX_PRICES[0];
-        let expected = inp + cached + out; // 1M of each over 1M
+        let (_, inp, cached, write, out) = CODEX_PRICES[0];
+        let expected = inp + cached + write + out; // 1M of each over 1M
         assert!((codex_cost(Some(CODEX_PRICES[0].0), &usage) - expected).abs() < 1e-9);
         // Unknown/None model falls back to the first entry.
         assert!((codex_cost(None, &usage) - expected).abs() < 1e-9);
@@ -299,6 +304,17 @@ mod tests {
         assert_eq!(u.output_tokens, 21 + 14); // reasoning counts as output
         assert_eq!(u.cache_creation_input_tokens, 0);
         assert_eq!(u.processed(), 5276 + 35);
+    }
+
+    #[test]
+    fn parse_codex_usage_splits_cache_writes() {
+        // codex 0.162 shape; input_tokens is inclusive of cached and cache writes.
+        let jsonl = "{\"type\":\"turn.completed\",\"usage\":{\"input_tokens\":29525,\"cached_input_tokens\":13184,\"cache_write_input_tokens\":4000,\"output_tokens\":5,\"reasoning_output_tokens\":0}}\n";
+        let u = parse_codex_usage(jsonl.as_bytes()).unwrap();
+        assert_eq!(u.input_tokens, 29525 - 13184 - 4000);
+        assert_eq!(u.cache_creation_input_tokens, 4000);
+        assert_eq!(u.cache_read_input_tokens, 13184);
+        assert_eq!(u.processed(), 29525 - 13184 + 5); // same burn, just split
     }
 
     #[test]
@@ -357,7 +373,7 @@ mod tests {
         assert!((grok_cost(Some(GROK_PRICES[0].0), &usage) - expected).abs() < 1e-9);
         assert!((grok_cost(None, &usage) - expected).abs() < 1e-9);
         assert!((grok_cost(Some("nope"), &usage) - expected).abs() < 1e-9);
-        // Named grok-4.5 row, not the default.
+        // Named non-default row (grok-4.7-build-fast).
         let (_, c_inp, c_cached, c_out) = GROK_PRICES[1];
         let c_expected = c_inp + c_cached + c_out;
         assert!((grok_cost(Some(GROK_PRICES[1].0), &usage) - c_expected).abs() < 1e-9);
